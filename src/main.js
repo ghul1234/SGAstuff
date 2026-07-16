@@ -1,5 +1,5 @@
 import './style.css';
-import { statesData, calculateEOI, getPayoutSplit } from './data.js';
+import { statesData, calculateEOI, getPayoutSplit, SHARES_PER_STATE } from './data.js';
 import { SGALedger, TAXONOMY } from './ledger.js';
 import { FREDService } from './fredService.js';
 
@@ -20,7 +20,695 @@ const CONTRACT_SPECS = {
   pricingScale: 2000 // EOI index points to USD pricing multiplier ($2,000 per EOI point)
 };
 
+// SGA Stock Specifications
+const STOCK_SPECS = {
+  tickSize: 0.01, // Price moves in cents
+  tickValue: 0.01, // 1 share * 1 cent = 1 cent change
+  multiplier: 1, // Share multiplier is 1
+  initialMarginPct: 1.00, // Unleveraged Cash Account (100% margin)
+  maintenanceMarginPct: 1.00,
+  pricingScale: 2000
+};
+
+window.activeInstrumentType = 'futures'; // 'futures' or 'stock'
+
+function getActiveSpecs() {
+  return window.activeInstrumentType === 'stock' ? STOCK_SPECS : CONTRACT_SPECS;
+}
+
+function getInstrumentSpecs(type) {
+  return type === 'stock' ? STOCK_SPECS : CONTRACT_SPECS;
+}
+
+window.activeTimeframe = '10s';
+
+function getTimeframeTicks(tf) {
+  switch (tf) {
+    case '10s': return 40;
+    case '1m': return 240;
+    case '5m': return 1200;
+    case '15m': return 3600;
+    case '1H': return 14400;
+    case '1D': return 345600;
+    default: return 40;
+  }
+}
+
+function getTimeframeIntervalMs(tf) {
+  switch (tf) {
+    case '10s': return 10000;
+    case '1m': return 60000;
+    case '5m': return 300000;
+    case '15m': return 900000;
+    case '1H': return 3600000;
+    case '1D': return 86400000;
+    default: return 10000;
+  }
+}
+
+function formatChartTime(time, timeframe) {
+  if (timeframe === '1D') {
+    return (time.getMonth() + 1) + '/' + time.getDate();
+  } else if (timeframe === '1H') {
+    return (time.getMonth() + 1) + '/' + time.getDate() + ' ' + time.getHours().toString().padStart(2, '0') + ':00';
+  } else {
+    return formatTime(time);
+  }
+}
+
+window.setTimeframe = (timeframe) => {
+  window.activeTimeframe = timeframe;
+  
+  document.querySelectorAll('.chart-timeframe-btn').forEach(btn => {
+    if (btn.getAttribute('data-timeframe') === timeframe) {
+      btn.classList.add('active');
+    } else {
+      btn.classList.remove('active');
+    }
+  });
+
+  window.tickCounter = 0;
+
+  if (currentTradingStateData) {
+    const specs = getActiveSpecs();
+    const trend = currentTradingStateData.growth >= 0 ? 1 : -1;
+    const ohlcData = new Array(600);
+    let priceCursor = currentLivePrice;
+    const now = new Date();
+    const intervalMs = getTimeframeIntervalMs(timeframe);
+
+    const decimals = window.activeInstrumentType === 'stock' ? (currentLivePrice < 1.0 ? 4 : 2) : 2;
+
+    for (let i = 599; i >= 0; i--) {
+      const time = new Date(now.getTime() - (599 - i) * intervalMs);
+      const timeStr = formatChartTime(time, timeframe);
+      const close = parseFloat(priceCursor.toFixed(decimals));
+      const tickVol = specs.tickSize * (1 + Math.random() * 4);
+      const change = (Math.random() * 2 - 1) * tickVol + (trend * specs.tickSize * 0.4);
+      const open = parseFloat((close - change).toFixed(decimals));
+      const high = parseFloat((Math.max(open, close) + Math.random() * specs.tickSize * 2).toFixed(decimals));
+      const low = parseFloat((Math.min(open, close) - Math.random() * specs.tickSize * 2).toFixed(decimals));
+      ohlcData[i] = { time: timeStr, open, high, low, close };
+      priceCursor = open + (Math.random() * 2 - 1) * specs.tickSize;
+    }
+
+    if (chartCtx) {
+      currentChartData = ohlcData;
+      drawChart();
+    }
+  }
+};
+
+window.setInstrumentType = (type) => {
+  window.activeInstrumentType = type;
+  
+  // Update toggle classes
+  const futBtn = document.getElementById('instrument-btn-futures');
+  const stkBtn = document.getElementById('instrument-btn-stock');
+  if (futBtn && stkBtn) {
+    if (type === 'stock') {
+      futBtn.classList.remove('active', 'futures-active');
+      stkBtn.classList.add('active', 'stock-active');
+    } else {
+      stkBtn.classList.remove('active', 'stock-active');
+      futBtn.classList.add('active', 'futures-active');
+    }
+  }
+
+  // Adjust default quantity for user convenience (e.g. 1 futures contract vs 100 stock shares)
+  const qtyInput = document.getElementById('order-qty');
+  if (qtyInput) {
+    const currentQty = parseInt(qtyInput.value.replace(/,/g, '')) || 1;
+    if (type === 'stock' && currentQty === 1) {
+      qtyInput.value = '100';
+    } else if (type === 'futures' && currentQty === 100) {
+      qtyInput.value = '1';
+    }
+  }
+
+  // Re-generate order book and chart under new specs
+  if (currentTradingStateData) {
+    const eoi = calculateEOI(currentTradingStateData);
+    const targetPrice = type === 'stock'
+      ? window.getStockPrice(currentTradingStateData.id)
+      : (eoi * CONTRACT_SPECS.pricingScale);
+
+    currentLivePrice = targetPrice;
+    window.continuousPrice = targetPrice;
+
+    // Update terminal pricing display
+    const priceEl = document.getElementById('trading-price');
+    if (priceEl) {
+      const decimals = type === 'stock' ? (currentLivePrice < 1.0 ? 4 : 2) : 2;
+      priceEl.textContent = `$${currentLivePrice.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}`;
+    }
+
+    // Regenerate Candlestick Chart for the new instrument
+    const trend = currentTradingStateData.growth >= 0 ? 1 : -1;
+    const ohlcData = new Array(600);
+    let priceCursor = currentLivePrice;
+    const now = new Date();
+    const specs = getActiveSpecs();
+
+    for (let i = 599; i >= 0; i--) {
+      const time = new Date(now.getTime() - (599 - i) * 10000);
+      const timeStr = formatTime(time);
+      const close = parseFloat(priceCursor.toFixed(type === 'stock' ? 4 : 2));
+      const tickVol = specs.tickSize * (1 + Math.random() * 4);
+      const change = (Math.random() * 2 - 1) * tickVol + (trend * specs.tickSize * 0.4);
+      const open = parseFloat((close - change).toFixed(type === 'stock' ? 4 : 2));
+      const high = parseFloat((Math.max(open, close) + Math.random() * specs.tickSize * 2).toFixed(type === 'stock' ? 4 : 2));
+      const low = parseFloat((Math.min(open, close) - Math.random() * specs.tickSize * 2).toFixed(type === 'stock' ? 4 : 2));
+      ohlcData[i] = { time: timeStr, open, high, low, close };
+      priceCursor = open + (Math.random() * 2 - 1) * specs.tickSize;
+    }
+
+    if (chartCtx) {
+      currentChartData = ohlcData;
+      drawChart();
+    }
+
+    generateOrderBook(currentLivePrice);
+    renderOrderBook();
+  }
+
+  updateContractSpecsUI();
+  renderIPOPanel();
+  renderTable();
+  updateOrderSummary();
+};
+
+function updateContractSpecsUI() {
+  const specs = getActiveSpecs();
+  
+  const tickValEl = document.getElementById('spec-tick-val');
+  const tickValueValEl = document.getElementById('spec-tick-value-val');
+  const multValEl = document.getElementById('spec-mult-val');
+  const marginLabelEl = document.getElementById('spec-margin-label');
+  const tickLabelEl = document.getElementById('spec-tick-label');
+  const tickValueLabelEl = document.getElementById('spec-tick-value-label');
+  const multLabelEl = document.getElementById('spec-mult-label');
+  const qtyLabelEl = document.getElementById('order-qty-label');
+  const labelEl = document.getElementById('instrument-type-label');
+
+  if (tickLabelEl) tickLabelEl.textContent = 'Tick';
+  if (tickValueLabelEl) tickValueLabelEl.textContent = 'Tick Val';
+  if (multLabelEl) multLabelEl.textContent = window.activeInstrumentType === 'stock' ? 'Shares' : 'Mult';
+  if (qtyLabelEl) qtyLabelEl.textContent = window.activeInstrumentType === 'stock' ? 'Shares' : 'Contracts';
+  if (labelEl) labelEl.textContent = window.activeInstrumentType === 'stock' ? 'SGA Shares' : 'Futures Contract';
+
+  if (tickValEl) tickValEl.textContent = specs.tickSize.toFixed(2);
+  if (tickValueValEl) tickValueValEl.textContent = `$${specs.tickValue.toFixed(2)}`;
+  if (multValEl) multValEl.textContent = specs.multiplier;
+
+  if (marginLabelEl) {
+    marginLabelEl.textContent = window.activeInstrumentType === 'stock' ? 'Required Cash' : 'Init Margin';
+  }
+
+  // Update margin value
+  const specMargin = document.getElementById('spec-margin');
+  if (specMargin && currentTradingStateData) {
+    const eoi = calculateEOI(currentTradingStateData);
+    const price = currentLivePrice || (eoi * specs.pricingScale);
+    const marginReq = price * specs.multiplier * specs.initialMarginPct;
+    specMargin.textContent = formatCurrency(marginReq);
+  }
+
+  // Update expiry value
+  const specExpiry = document.getElementById('spec-expiry');
+  if (specExpiry) {
+    if (window.activeInstrumentType === 'stock') {
+      specExpiry.textContent = 'Perpetual';
+    } else {
+      specExpiry.textContent = getNextExpiry().label;
+    }
+  }
+
+  // Toggle specs strips
+  const futuresStrip = document.getElementById('specs-strip-futures');
+  const stockStrip = document.getElementById('specs-strip-stock');
+  if (futuresStrip) futuresStrip.style.display = window.activeInstrumentType === 'stock' ? 'none' : '';
+  if (stockStrip) stockStrip.style.display = window.activeInstrumentType === 'stock' ? '' : 'none';
+
+  // Update Mark Price label
+  const priceLabelEl = document.getElementById('terminal-price-label');
+  if (priceLabelEl) priceLabelEl.textContent = window.activeInstrumentType === 'stock' ? 'Share Price' : 'Mark Price';
+
+  // Update stock spec values
+  if (window.activeInstrumentType === 'stock' && currentTradingStateData) {
+    const stockPrice = currentLivePrice || window.getStockPrice(currentTradingStateData.id);
+    const reqCash = stockPrice * 1; // 1 share
+    const reqCashEl = document.getElementById('stock-spec-req-cash');
+    if (reqCashEl) reqCashEl.textContent = reqCash < 1 ? `$${reqCash.toFixed(4)}` : `$${reqCash.toFixed(2)}`;
+  }
+
+  // Update left-side Details Panel labels and values dynamically
+  const exposureLabelEl = document.getElementById('market-exposure-label');
+  const oiLabelEl = document.getElementById('market-oi-label');
+  const outstandingLabelEl = document.getElementById('market-outstanding-label');
+  const oiEl = document.getElementById('market-oi');
+  const outstandingEl = document.getElementById('market-outstanding');
+
+  if (currentTradingStateData) {
+    const eoi = calculateEOI(currentTradingStateData);
+    const stateProportion = eoi / totalNationalEOI;
+
+    if (window.activeInstrumentType === 'stock') {
+      if (exposureLabelEl) exposureLabelEl.textContent = 'Share Details';
+      if (oiLabelEl) oiLabelEl.textContent = 'Market Cap';
+      if (outstandingLabelEl) outstandingLabelEl.textContent = 'Shares Out';
+      
+      const stockPrice = currentLivePrice || window.getStockPrice(currentTradingStateData.id);
+      const mcap = 100_000_000_000 * stockPrice;
+      if (oiEl) oiEl.textContent = formatCurrency(mcap);
+      if (outstandingEl) outstandingEl.textContent = '100.0B';
+    } else {
+      if (exposureLabelEl) exposureLabelEl.textContent = 'Market Exposure';
+      if (oiLabelEl) oiLabelEl.textContent = 'Open Interest';
+      if (outstandingLabelEl) outstandingLabelEl.textContent = 'Contracts Out';
+      
+      if (oiEl) oiEl.innerHTML = formatScaledValue(BASE_MARKET_STATS.oi, stateProportion);
+      if (outstandingEl) outstandingEl.innerHTML = formatScaledValue(BASE_MARKET_STATS.outstanding, stateProportion, true);
+    }
+  }
+
+  // Update Order Entry buttons labels
+  const buyBtn = document.querySelector('.trading-terminal .buy-btn');
+  const sellBtn = document.querySelector('.trading-terminal .sell-btn');
+  if (buyBtn && sellBtn) {
+    buyBtn.disabled = false;
+    sellBtn.disabled = false;
+    buyBtn.style.opacity = '';
+    sellBtn.style.opacity = '';
+    buyBtn.style.cursor = '';
+    sellBtn.style.cursor = '';
+    if (window.activeInstrumentType === 'stock') {
+      buyBtn.innerHTML = `<span style="font-size: 0.65rem; display: block; opacity: 0.8; margin-bottom: 2px;">BUY SHARES</span>LONG`;
+      sellBtn.innerHTML = `<span style="font-size: 0.65rem; display: block; opacity: 0.8; margin-bottom: 2px;">SHORT SELL</span>SHORT`;
+    } else {
+      buyBtn.innerHTML = `<span style="font-size: 0.65rem; display: block; opacity: 0.8; margin-bottom: 2px;">LONG</span>BUY`;
+      sellBtn.innerHTML = `<span style="font-size: 0.65rem; display: block; opacity: 0.8; margin-bottom: 2px;">SHORT</span>SELL`;
+    }
+  }
+}
+
+
+
+// ─────────────────────────────────────────────
+// IPO ENGINE — SGA Stock Shares
+// ─────────────────────────────────────────────
+
+// Live stock prices per state — independent from futures price.
+// Before IPO: floor at $0.001. After IPO: set to ipoPriceTarget.
+window.stockPrices = {};
+statesData.forEach(s => { window.stockPrices[s.id] = 0.001; });
+
+// Returns the live stock market price for a given state (independent of futures)
+window.getStockPrice = (stateId) => window.stockPrices[stateId] || 0.001;
+
+// IPO simulation status
+window.ipoRunning = false;
+window.ipoAnimationId = null;
+
+/**
+ * Animate IPO price discovery for a single state.
+ * Price walks from $0.001 → ipoPriceTarget over ~3.5 seconds using eased steps.
+ */
+window.runIPOSimulation = (stateId) => {
+  const state = statesData.find(s => s.id === stateId);
+  if (!state) return;
+  if (state.ipoStatus === 'running') {
+    showTradeNotification(`${state.name} IPO is already in progress.`, 'sell');
+    return;
+  }
+  if (state.ipoStatus === 'completed') {
+    showTradeNotification(`${state.name} SGA IPO already completed. Price: $${state.ipoCurrentPrice.toFixed(2)}`, 'buy');
+    return;
+  }
+
+  // Track concurrent running count
+  window.ipoRunningCount = (window.ipoRunningCount || 0) + 1;
+  window.ipoRunning = true;
+  state.ipoStatus = 'running';
+  state.ipoCurrentPrice = 0.001;
+  window.stockPrices[state.id] = 0.001;
+  state.ipoProgress = 0;
+
+  // ── Inject pre-IPO positions for State Treasury and Federal Reserve ──
+  // Remove any previous IPO positions for this state to avoid duplication on re-run
+  positions = positions.filter(p => !(p.isIPOPosition && p.stateId === stateId));
+
+  // State Treasury: 20 billion shares at floor $0.001
+  const statePosId = positionIdCounter++;
+  positions.push({
+    id: statePosId,
+    stateId: state.id,
+    stateName: state.id,
+    side: 'LONG',
+    qty: 20_000_000_000,
+    entryPrice: 0.001,
+    timestamp: Date.now(),
+    instrumentType: 'stock',
+    isIPOPosition: true,
+    ipoParty: 'STATE',
+    label: 'State Treasury'
+  });
+
+  // Federal Reserve: 1 billion shares at floor $0.001
+  const fedPosId = positionIdCounter++;
+  positions.push({
+    id: fedPosId,
+    stateId: state.id,
+    stateName: state.id,
+    side: 'LONG',
+    qty: 1_000_000_000,
+    entryPrice: 0.001,
+    timestamp: Date.now(),
+    instrumentType: 'stock',
+    isIPOPosition: true,
+    ipoParty: 'FED',
+    label: 'Federal Reserve'
+  });
+
+  renderPositions();
+
+  const startPrice = 0.001;
+  const targetPrice = state.ipoPriceTarget;
+
+  // Log panel details (instantly logged)
+  const logEl = document.getElementById('ipo-log-panel');
+  if (logEl) {
+    logEl.innerHTML = '';
+    
+    const appendLog = (html) => {
+      const div = document.createElement('div');
+      div.innerHTML = html;
+      div.style.animation = 'ipo-log-appear 0.4s ease';
+      logEl.appendChild(div);
+    };
+
+    appendLog(`<div class="ipo-log-entry ipo-log-start">🔔 <strong>${state.name} SGA Stock IPO Initiated</strong> — ${new Date().toLocaleTimeString()}</div>`);
+    appendLog(`<div class="ipo-log-entry">📋 <strong>Underwriter:</strong> ${state.ipoUnderwriter} | Target Market Cap: <span class="ipo-highlight">$${state.ipoMarketCap}</span></div>`);
+    appendLog(`<div class="ipo-log-entry">📊 <strong>Total Shares:</strong> 100,000,000,000 (100 Billion) | Floor: <span class="ipo-floor">$0.001</span></div>`);
+    appendLog(`<div class="ipo-log-entry ipo-log-state">🏛️ <strong>State Treasury Investment:</strong> $50 Million cash committed for 20% equity (20,000,000,000 shares)</div>`);
+    appendLog(`<div class="ipo-log-entry ipo-log-fed">🏛️ <strong>Federal Reserve Investment:</strong> $50 Million cash injected for 1% equity (1,000,000,000 shares)</div>`);
+    appendLog(`<div class="ipo-log-entry ipo-log-book">📈 <strong>Public Market Allocation:</strong> 79% equity (79,000,000,000 shares) underwritten by ${state.ipoUnderwriter} — Price discovery begins...</div>`);
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  // Price animation: extremely slow walk (every 10 seconds) from startPrice ($0.001) → targetPrice
+  // Walks from $0.001 to $1.00 over 70 seconds (7 steps of 10s), then shifts to normal speeds (100ms per step) above $1.00.
+  const STEPS = 12;
+  let step = 0;
+  let lastLoggedMilestone = -1;
+  let walk;
+
+  // Full re-render on run to show pricing state
+  renderIPOPanel();
+
+  const runStep = () => {
+    step++;
+    const t = step / STEPS;
+    
+    let currentPrice;
+    if (targetPrice <= 1.00) {
+      const eased = Math.pow(t, 3); // Cubic ease-in for extremely slow sub-dollar climb
+      const noiseAmplitude = (targetPrice - startPrice) * 0.05 * Math.sin(t * Math.PI);
+      const noise = (Math.random() * 2 - 1) * noiseAmplitude;
+      currentPrice = startPrice + (targetPrice - startPrice) * eased + noise;
+    } else {
+      if (step <= 7) {
+        // Sub-dollar phase: very slow pennies walk over 7 steps (70 seconds)
+        const tSub = step / 7;
+        const eased = Math.pow(tSub, 3); // Cubic ease-in
+        const noiseAmplitude = 0.05 * Math.sin(tSub * Math.PI);
+        const noise = (Math.random() * 2 - 1) * noiseAmplitude;
+        currentPrice = startPrice + (1.00 - startPrice) * eased + noise;
+        
+        // When we reach step 7 (price reaches $1.00), shift gears to normal speed!
+        if (step === 7) {
+          clearInterval(walk);
+          // Shift to 100ms ticks for normal speed post-dollar climb
+          walk = setInterval(runStep, 100);
+          window.ipoAnimationId = walk;
+        }
+      } else {
+        // Post-dollar phase: normal speed walk (100ms per step) over remaining 5 steps
+        const tPost = (step - 7) / 5;
+        const eased = Math.pow(tPost, 2);
+        const noiseAmplitude = (targetPrice - 1.00) * 0.04 * Math.sin(tPost * Math.PI);
+        const noise = (Math.random() * 2 - 1) * noiseAmplitude;
+        currentPrice = 1.00 + (targetPrice - 1.00) * eased + noise;
+      }
+    }
+    
+    // Ensure we don't go below startPrice
+    currentPrice = Math.max(startPrice, currentPrice);
+    
+    // Enforce target price at final step
+    if (step >= STEPS) {
+      currentPrice = targetPrice;
+    }
+
+    state.ipoCurrentPrice = parseFloat(currentPrice.toFixed(4));
+    window.stockPrices[state.id] = state.ipoCurrentPrice;
+    state.ipoProgress = parseFloat((t * 100).toFixed(1));
+
+    const priceStr = state.ipoCurrentPrice >= 1
+      ? `$${state.ipoCurrentPrice.toFixed(2)}`
+      : `$${state.ipoCurrentPrice.toFixed(4)}`;
+    const gainPct = ((state.ipoCurrentPrice - 0.001) / 0.001 * 100);
+    const gainStr = '+' + gainPct.toLocaleString(undefined, { maximumFractionDigits: 0 }) + '%';
+
+    // Card stat updates
+    const cardPriceEl = document.getElementById('ipo-card-live-price');
+    if (cardPriceEl) cardPriceEl.textContent = priceStr;
+
+    const cardGainEl = document.getElementById('ipo-card-live-gain');
+    if (cardGainEl) cardGainEl.textContent = gainStr;
+
+    // Table row price update
+    const rowPriceEl = document.getElementById(`ipo-row-price-${state.id}`);
+    if (rowPriceEl) rowPriceEl.textContent = priceStr;
+
+    // Update trading terminal pricing & chart in real-time
+    if (currentTradingStateData && currentTradingStateData.id === stateId && window.activeInstrumentType === 'stock') {
+      currentLivePrice = state.ipoCurrentPrice;
+      const livePriceEl = document.getElementById('live-price');
+      if (livePriceEl) livePriceEl.textContent = priceStr;
+      const tradingPriceEl = document.getElementById('trading-price');
+      if (tradingPriceEl) tradingPriceEl.textContent = priceStr;
+
+      // Update the order book to center around the active pricing walk
+      generateOrderBook(currentLivePrice);
+      renderOrderBook();
+
+      // Update the chart candlestick data with current price walk
+      if (currentChartData && currentChartData.length > 0) {
+        const lastCandle = currentChartData[currentChartData.length - 1];
+        lastCandle.close = currentLivePrice;
+        lastCandle.high = Math.max(lastCandle.high, currentLivePrice);
+        lastCandle.low = Math.min(lastCandle.low, currentLivePrice);
+        drawChart();
+      }
+    }
+
+    renderPositions();
+
+    // Milestones at 25%, 50%, 75%
+    const milestone = Math.floor(state.ipoProgress / 25) * 25;
+    if (milestone > 0 && milestone <= 75 && milestone !== lastLoggedMilestone) {
+      lastLoggedMilestone = milestone;
+      if (logEl) {
+        const div = document.createElement('div');
+        div.className = 'ipo-log-entry ipo-log-book';
+        div.innerHTML = `📊 <strong>${milestone}% Priced</strong> — Current price: <span class="ipo-highlight">${priceStr}</span> | Gain from floor: <span style="color:#10b981;font-weight:700;">${gainStr}</span>`;
+        logEl.appendChild(div);
+        logEl.scrollTop = logEl.scrollHeight;
+      }
+    }
+
+    if (step >= STEPS) {
+      clearInterval(walk);
+      state.ipoStatus = 'completed';
+      state.ipoCurrentPrice = targetPrice;
+      window.stockPrices[state.id] = targetPrice;
+      state.ipoProgress = 100;
+
+      // Decrement running count
+      window.ipoRunningCount = Math.max(0, (window.ipoRunningCount || 1) - 1);
+      window.ipoRunning = window.ipoRunningCount > 0;
+
+      if (logEl) {
+        const div = document.createElement('div');
+        div.className = 'ipo-log-entry ipo-log-complete';
+        div.innerHTML = `✅ <strong>IPO COMPLETE</strong> — ${state.name} priced at <span class="ipo-highlight">$${targetPrice.toFixed(2)}</span> per share | Market Cap: $${state.ipoMarketCap}`;
+        logEl.appendChild(div);
+        logEl.scrollTop = logEl.scrollHeight;
+      }
+
+      if (currentTradingStateData && currentTradingStateData.id === stateId && window.activeInstrumentType === 'stock') {
+        currentLivePrice = targetPrice;
+        generateOrderBook(targetPrice);
+        renderOrderBook();
+        updateOrderSummary();
+      }
+
+      renderIPOPanel();
+
+      if (!window._runningAllIPOs) {
+        showTradeNotification(`🎉 ${state.name} IPO Complete! $${targetPrice.toFixed(2)}/share — ${state.ipoUnderwriter}`, 'buy');
+      } else if (window.ipoRunningCount === 0) {
+        window._runningAllIPOs = false;
+        showTradeNotification('🎉 All 50 State SGA IPOs Completed! Full national market now live.', 'buy');
+      }
+    }
+  };
+
+  // Start with 10-second intervals for the sub-dollar phase
+  walk = setInterval(runStep, 10000);
+  window.ipoAnimationId = walk;
+};
+
+/**
+ * Run all pending state IPOs simultaneously
+ */
+window.runAllIPOs = () => {
+  const pending = statesData.filter(s => s.ipoStatus === 'pending');
+  if (pending.length === 0) {
+    showTradeNotification('All state IPOs have already completed.', 'buy');
+    return;
+  }
+  showTradeNotification(`🚀 Launching all ${pending.length} SGA IPOs simultaneously...`, 'buy');
+  window._runningAllIPOs = true;
+  window.ipoRunningCount = pending.length;
+
+  pending.forEach((state, i) => {
+    setTimeout(() => {
+      if (state.ipoStatus === 'pending') {
+        window.runIPOSimulation(state.id);
+      }
+    }, i * 30);
+  });
+};
+
+/**
+ * Reset all IPOs to pending (for demo)
+ */
+window.resetAllIPOs = () => {
+  // Cancel all running walks by force-resetting state
+  window.ipoRunningCount = 0;
+  window.ipoRunning = false;
+  window._runningAllIPOs = false;
+  statesData.forEach(s => {
+    s.ipoStatus = 'pending';
+    s.ipoCurrentPrice = 0.001;
+    s.ipoProgress = 0;
+    window.stockPrices[s.id] = 0.001;
+  });
+  // Remove all IPO positions from the panel
+  positions = positions.filter(p => !p.isIPOPosition);
+  renderPositions();
+  renderIPOPanel();
+  showTradeNotification('All IPO simulations reset to pending.', 'buy');
+};
+
+function renderIPOPanel() {
+  const container = document.getElementById('ipo-states-table-body');
+  if (!container) return;
+
+  const sorted = [...statesData].sort((a, b) => b.ipoPriceTarget - a.ipoPriceTarget);
+
+  container.innerHTML = sorted.map(state => {
+    const statusBadge = state.ipoStatus === 'completed'
+      ? `<span class="ipo-badge ipo-badge-complete">✅ Live</span>`
+      : state.ipoStatus === 'running'
+      ? `<span class="ipo-badge ipo-badge-running">⏳ Pricing</span>`
+      : `<span class="ipo-badge ipo-badge-pending">🕐 Pending</span>`;
+
+    const currentPriceStr = state.ipoStatus === 'completed'
+      ? `<span id="ipo-row-price-${state.id}" style="color:#10b981;font-weight:700;font-family:monospace;">$${state.ipoCurrentPrice.toFixed(2)}</span>`
+      : state.ipoStatus === 'running'
+      ? `<span id="ipo-row-price-${state.id}" style="color:var(--accent-gold);font-weight:700;font-family:monospace;">$${state.ipoCurrentPrice.toFixed(4)}</span>`
+      : `<span id="ipo-row-price-${state.id}" style="color:rgba(255,255,255,0.3);font-family:monospace;">$0.001</span>`;
+
+    const runBtn = state.ipoStatus !== 'completed'
+      ? `<button class="ipo-run-btn" onclick="runIPOSimulation('${state.id}')" ${state.ipoStatus === 'running' ? 'disabled' : ''}>▶ Run</button>`
+      : `<span style="color:#10b981;font-size:0.65rem;font-weight:600;">LIVE</span>`;
+
+    return `
+      <tr class="ipo-table-row">
+        <td style="font-weight:600;">${state.name}</td>
+        <td style="font-family:monospace;color:var(--accent-blue);">$${state.ipoPriceTarget.toFixed(2)}</td>
+        <td style="color:rgba(255,255,255,0.6);">$${state.ipoMarketCap}</td>
+        <td style="font-size:0.6rem;color:rgba(255,255,255,0.45);">${state.ipoUnderwriter}</td>
+        <td>${currentPriceStr}</td>
+        <td>${statusBadge}</td>
+        <td>${runBtn}</td>
+      </tr>
+    `;
+  }).join('');
+
+  renderSelectedStateIPOCard();
+}
+
+function renderSelectedStateIPOCard() {
+  const card = document.getElementById('ipo-selected-card');
+  if (!card || !currentTradingStateData) {
+    if (card) card.innerHTML = `<div style="text-align:center;color:rgba(255,255,255,0.3);padding:2rem;font-size:0.8rem;">Select a state from the map to view its IPO details.</div>`;
+    return;
+  }
+  const state = statesData.find(s => s.id === currentTradingStateData.id);
+  if (!state) return;
+
+  const statusColor = state.ipoStatus === 'completed' ? '#10b981' : state.ipoStatus === 'running' ? 'var(--accent-gold)' : 'rgba(255,255,255,0.4)';
+  const statusLabel = state.ipoStatus === 'completed' ? '✅ IPO Complete — Trading Live' : state.ipoStatus === 'running' ? '⏳ Pricing...' : '🕐 Awaiting IPO Launch';
+  
+  // Calculate percentage gain dynamically as current price goes up
+  const currentGain = ((state.ipoCurrentPrice - 0.001) / 0.001 * 100);
+  const gainPct = currentGain.toLocaleString(undefined, { maximumFractionDigits: 0 });
+
+  card.innerHTML = `
+    <div class="ipo-card-header">
+      <div>
+        <div style="font-size:1.05rem;font-weight:700;">${state.name} SGA Stock</div>
+        <div style="font-size:0.6rem;color:rgba(255,255,255,0.45);margin-top:2px;">Underwritten by ${state.ipoUnderwriter}</div>
+      </div>
+      <span class="ipo-status-pill" style="background:${statusColor}18;border-color:${statusColor}44;color:${statusColor};">${statusLabel}</span>
+    </div>
+    <div class="ipo-card-stats">
+      <div class="ipo-stat"><div class="ipo-stat-label">Floor Price</div><div class="ipo-stat-value" style="color:rgba(255,255,255,0.4);">$0.001</div></div>
+      <div class="ipo-stat"><div class="ipo-stat-label">Current</div><div id="ipo-card-live-price" class="ipo-stat-value" style="color:${state.ipoStatus === 'completed' ? '#10b981' : 'var(--accent-gold)'};">$${state.ipoCurrentPrice >= 1 ? state.ipoCurrentPrice.toFixed(2) : state.ipoCurrentPrice.toFixed(4)}</div></div>
+      <div class="ipo-stat"><div class="ipo-stat-label">Price Target</div><div class="ipo-stat-value" style="color:var(--accent-blue);">$${state.ipoPriceTarget.toFixed(2)}</div></div>
+      <div class="ipo-stat"><div class="ipo-stat-label">Market Cap</div><div class="ipo-stat-value" style="color:var(--accent-gold);">$${state.ipoMarketCap}</div></div>
+      <div class="ipo-stat"><div class="ipo-stat-label">Total Shares</div><div class="ipo-stat-value">100B</div></div>
+      <div class="ipo-stat"><div class="ipo-stat-label">Gain from $0.001</div><div id="ipo-card-live-gain" class="ipo-stat-value" style="color:#10b981;">+${gainPct}%</div></div>
+    </div>
+    <div class="ipo-funding-breakdown">
+      <div style="font-size:0.6rem;color:rgba(255,255,255,0.45);margin-bottom:6px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;">Initial Capital & Equity Allocation</div>
+      <div class="ipo-funding-bar" style="display:flex;height:8px;background:rgba(255,255,255,0.05);border-radius:3px;overflow:hidden;">
+        <div style="flex:1;background:linear-gradient(90deg,#3b82f6,#60a5fa);" title="Federal Reserve (Fed): 1%"></div>
+        <div style="flex:20;background:linear-gradient(90deg,#f59e0b,#fbbf24);" title="State Government: 20%"></div>
+        <div style="flex:79;background:linear-gradient(90deg,#8b5cf6,#a78bfa);" title="Public Market: 79%"></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;gap:8px;margin-top:6px;font-size:0.58rem;flex-wrap:wrap;line-height:1.35;">
+        <span style="color:#60a5fa;display:inline-flex;align-items:center;gap:3px;">🏛️ <strong>Fed:</strong> $50M (1% / 1B sh.)</span>
+        <span style="color:#fbbf24;display:inline-flex;align-items:center;gap:3px;">🏛️ <strong>State:</strong> $50M (20% / 20B sh.)</span>
+        <span style="color:#a78bfa;display:inline-flex;align-items:center;gap:3px;">🛒 <strong>Market:</strong> 79% (79B sh.)</span>
+      </div>
+    </div>
+    ${state.ipoStatus !== 'completed' ? `
+    <button class="ipo-launch-btn" onclick="runIPOSimulation('${state.id}')" ${state.ipoStatus === 'running' ? 'disabled' : ''}>
+      ${state.ipoStatus === 'running' ? '⏳ Pricing...' : '🚀 Launch IPO Simulation'}
+    </button>` : `
+    <div style="text-align:center;padding:8px;background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.2);border-radius:6px;color:#10b981;font-size:0.75rem;font-weight:600;margin-top:8px;">
+      ✅ Trading Live at $${state.ipoCurrentPrice.toFixed(2)} per share
+    </div>`}
+  `;
+}
+
 let positions = [];
+
 let positionIdCounter = 1;
 let currentLivePrice = 0;
 let currentBid = 0;
@@ -587,10 +1275,10 @@ function formatCurrency(value) {
 }
 
 const BASE_MARKET_STATS = {
-  vol24h: 2.3e12,
-  avg7d: 2.1e12,
-  oi: 15.6e12,
-  outstanding: 110e6
+  vol24h: 115e12,
+  avg7d: 105e12,
+  oi: 780e12,
+  outstanding: 5.5e9
 };
 
 function formatScaledValue(baseValue, proportion, isContracts = false) {
@@ -636,6 +1324,7 @@ app.innerHTML = `
         <a href="#table" class="nav-link">Sovereign Index</a>
         <a href="#ledger" class="nav-link">SGA Ledger</a>
         <a href="#calculator" class="nav-link">SGA Calculator</a>
+        <a href="#yield-day" class="nav-link">Yield Day</a>
         <a href="#news" id="header-news-lnk" class="nav-link" style="display: flex; align-items: center; gap: 0.4rem; border: 1px solid rgba(251, 191, 36, 0.3); background: rgba(251, 191, 36, 0.05); color: var(--accent-gold); padding: 0.4rem 0.8rem; font-size: 0.75rem; border-radius: 0.5rem; text-decoration: none; margin-left: 1.5rem; height: 32px; box-shadow: 0 0 10px rgba(251, 191, 36, 0.05); transition: all 0.2s ease;">
           <span style="display: inline-block; width: 6px; height: 6px; background: var(--accent-gold); border-radius: 50%; animation: pulse 2s infinite;"></span>
           SGA News <span id="header-news-count" class="news-badge-reg" style="background: rgba(251, 191, 36, 0.1); border-color: rgba(251, 191, 36, 0.3); color: var(--accent-gold); padding: 0.05rem 0.25rem; font-size: 0.6rem; border-radius: 3px; font-weight: 700; margin-left: 2px;">50</span>
@@ -674,7 +1363,7 @@ app.innerHTML = `
         </div>
 
         <div class="glass-card">
-          <div class="stat-label">Payout Simulation & Market Exposure ($1 Trillion Injection)</div>
+          <div class="stat-label">Payout Simulation & Market Exposure ($50 Trillion Injection)</div>
           <div class="split-container" style="display: flex; flex-direction: column; gap: 0.75rem; margin-top: 0.5rem;">
             <div class="split-bar">
               <div class="market-share" id="market-bar"></div>
@@ -689,9 +1378,9 @@ app.innerHTML = `
                   <span style="font-size: 0.72rem; color: var(--text-secondary);">7-Day Avg: <strong id="market-7d-avg" style="color: #fff; font-family: monospace;">--</strong></span>
                 </div>
                 <div style="display: flex; flex-direction: column; gap: 3px;">
-                  <span style="font-size: 0.7rem; color: var(--accent-blue); font-weight: bold; text-transform: uppercase; letter-spacing: 0.05em;">Market Exposure</span>
-                  <span style="font-size: 0.72rem; color: var(--text-secondary);">Open Interest: <strong id="market-oi" style="color: #fff; font-family: monospace;">--</strong></span>
-                  <span style="font-size: 0.72rem; color: var(--text-secondary);">Contracts Out: <strong id="market-outstanding" style="color: #fff; font-family: monospace;">--</strong></span>
+                  <span id="market-exposure-label" style="font-size: 0.7rem; color: var(--accent-blue); font-weight: bold; text-transform: uppercase; letter-spacing: 0.05em;">Market Exposure</span>
+                  <span style="font-size: 0.72rem; color: var(--text-secondary);"><span id="market-oi-label">Open Interest</span>: <strong id="market-oi" style="color: #fff; font-family: monospace;">--</strong></span>
+                  <span style="font-size: 0.72rem; color: var(--text-secondary);"><span id="market-outstanding-label">Contracts Out</span>: <strong id="market-outstanding" style="color: #fff; font-family: monospace;">--</strong></span>
                 </div>
               </div>
               
@@ -775,8 +1464,8 @@ app.innerHTML = `
                 <th>GDP ($B)</th>
                 <th>Growth (%)</th>
                 <th>Inflation (%)</th>
-                <th>EOI Index</th>
-                <th>SGA Price</th>
+                <th id="table-header-eoi">EOI Index</th>
+                <th id="table-header-price">SGA Price</th>
                 <th>24h Chg</th>
               </tr>
             </thead>
@@ -785,25 +1474,38 @@ app.innerHTML = `
         </div>
 
         <div class="trading-terminal glass-card" style="display: flex; flex-direction: column; gap: 0;">
+          <!-- Instrument Selector Toggle -->
+          <div class="instrument-selector">
+            <button id="instrument-btn-futures" class="tab-btn active futures-active" onclick="window.setInstrumentType('futures')">FUTURES</button>
+            <button id="instrument-btn-stock" class="tab-btn" onclick="window.setInstrumentType('stock')">SHARES</button>
+          </div>
+
           <!-- Header -->
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
             <div>
-              <div class="stat-label">Futures Contract</div>
+              <div class="stat-label" id="instrument-type-label">Futures Contract</div>
               <h2 id="trading-state-name" style="margin: 0; font-size: 1.4rem;">Select a State</h2>
             </div>
             <div style="text-align: right;">
-              <div class="stat-label">Mark Price</div>
+              <div class="stat-label" id="terminal-price-label">Mark Price</div>
               <div id="trading-price" class="live-price" style="font-size: 1.5rem; font-weight: bold; color: var(--accent-blue);">--</div>
             </div>
           </div>
 
-          <!-- Contract Specs Strip -->
-          <div class="contract-specs-strip">
-            <div class="spec-item"><span class="spec-label">Tick</span><span class="spec-val">0.01</span></div>
-            <div class="spec-item"><span class="spec-label">Tick Val</span><span class="spec-val">$10</span></div>
-            <div class="spec-item"><span class="spec-label">Mult</span><span class="spec-val">$1,000</span></div>
-            <div class="spec-item"><span class="spec-label">Init Margin</span><span class="spec-val" id="spec-margin">--</span></div>
+          <!-- Contract / Stock Specs Strip -->
+          <div class="contract-specs-strip" id="specs-strip-futures" style="">
+            <div class="spec-item"><span class="spec-label" id="spec-tick-label">Tick</span><span class="spec-val" id="spec-tick-val">1.00</span></div>
+            <div class="spec-item"><span class="spec-label" id="spec-tick-value-label">Tick Val</span><span class="spec-val" id="spec-tick-value-val">$10.00</span></div>
+            <div class="spec-item"><span class="spec-label" id="spec-mult-label">Mult</span><span class="spec-val" id="spec-mult-val">10</span></div>
+            <div class="spec-item"><span class="spec-label" id="spec-margin-label">Init Margin</span><span class="spec-val" id="spec-margin">--</span></div>
             <div class="spec-item"><span class="spec-label">Expiry</span><span class="spec-val" id="spec-expiry">--</span></div>
+          </div>
+          <!-- Stock-specific Specs Strip (shown only in stock mode) -->
+          <div class="contract-specs-strip" id="specs-strip-stock" style="display:none;">
+            <div class="spec-item"><span class="spec-label">Sovereign Class</span><span class="spec-val">Equity</span></div>
+            <div class="spec-item"><span class="spec-label">Leverage</span><span class="spec-val">1x (None)</span></div>
+            <div class="spec-item"><span class="spec-label">Required Cash</span><span class="spec-val" id="stock-spec-req-cash">$0</span></div>
+            <div class="spec-item"><span class="spec-label">Settlement</span><span class="spec-val">Cash</span></div>
           </div>
 
           <!-- Chart Container -->
@@ -814,9 +1516,13 @@ app.innerHTML = `
             
             <!-- Glassmorphic Chart Toolbar -->
             <div class="chart-toolbar" style="display: flex; align-items: center; justify-content: space-between; margin-top: 0.5rem; padding: 0.35rem 0.5rem; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 0.35rem; font-size: 0.7rem;">
-              <div style="display: flex; gap: 0.35rem;">
-                <button type="button" id="chart-btn-pan-left" class="chart-tool-btn" title="Scroll Back in Time" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: var(--text-primary); border-radius: 0.25rem; padding: 0.2rem 0.4rem; cursor: pointer; font-size: 0.65rem;">◀ Past</button>
-                <button type="button" id="chart-btn-pan-right" class="chart-tool-btn" title="Scroll to Present" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: var(--text-primary); border-radius: 0.25rem; padding: 0.2rem 0.4rem; cursor: pointer; font-size: 0.65rem;">Future ▶</button>
+              <div style="display: flex; gap: 0.25rem;">
+                <button type="button" class="chart-timeframe-btn active" data-timeframe="10s" onclick="window.setTimeframe('10s')">10s</button>
+                <button type="button" class="chart-timeframe-btn" data-timeframe="1m" onclick="window.setTimeframe('1m')">1m</button>
+                <button type="button" class="chart-timeframe-btn" data-timeframe="5m" onclick="window.setTimeframe('5m')">5m</button>
+                <button type="button" class="chart-timeframe-btn" data-timeframe="15m" onclick="window.setTimeframe('15m')">15m</button>
+                <button type="button" class="chart-timeframe-btn" data-timeframe="1H" onclick="window.setTimeframe('1H')">1H</button>
+                <button type="button" class="chart-timeframe-btn" data-timeframe="1D" onclick="window.setTimeframe('1D')">1D</button>
               </div>
               
               <!-- Custom styled scroll slider -->
@@ -862,7 +1568,7 @@ app.innerHTML = `
                 </select>
               </div>
               <div class="order-field">
-                <label>Contracts</label>
+                <label id="order-qty-label">Contracts</label>
                 <div class="qty-control">
                   <button class="qty-btn" onclick="adjustQty(-1)">−</button>
                   <input type="text" id="order-qty" value="1" inputmode="numeric">
@@ -880,12 +1586,12 @@ app.innerHTML = `
                 <strong id="order-notional">--</strong>
               </div>
               <div style="display: flex; justify-content: space-between; width: 100%;">
-                <span>Required Margin (10%):</span>
+                <span id="order-margin-label">Required Margin (10%):</span>
                 <strong id="order-margin">--</strong>
               </div>
               <div style="display: flex; flex-direction: column; width: 100%; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 0.35rem; gap: 0.25rem;">
                 <div style="display: flex; justify-content: space-between; width: 100%;">
-                  <span>Exchange Fee ($0.50/Contract):</span>
+                  <span id="order-fee-label">Exchange Fee ($0.50/Contract):</span>
                   <strong id="order-fee" style="color: #10b981;">$0.00 (Free &lt; $25k)</strong>
                 </div>
                 <div id="order-fee-split" style="font-size: 0.55rem; color: var(--text-secondary); display: none; flex-direction: column; width: 100%; font-family: monospace; border-top: 1px dashed rgba(255,255,255,0.03); padding-top: 0.15rem; gap: 0.1rem; text-align: left;">
@@ -893,7 +1599,7 @@ app.innerHTML = `
                   <span id="fee-split-llc">↳ Royalty to SGA LLC (33%): $0.00</span>
                   <span id="fee-split-state">↳ Sovereign Yield (33%): $0.00</span>
                 </div>
-                <div style="display: flex; justify-content: space-between; width: 100%; border-top: 1px dashed rgba(255,255,255,0.03); padding-top: 0.15rem;">
+                <div id="order-fed-fee-row" style="display: flex; justify-content: space-between; width: 100%; border-top: 1px dashed rgba(255,255,255,0.03); padding-top: 0.15rem;">
                   <span>Federal Reg Fee (0.04%):</span>
                   <strong id="order-fed-fee" style="color: #38bdf8; font-family: monospace;">$0.00</strong>
                 </div>
@@ -948,7 +1654,7 @@ app.innerHTML = `
           <table id="positions-table">
             <thead style="position: sticky; top: 0; z-index: 5;">
               <tr>
-                <th>Contract</th>
+                <th>Asset</th>
                 <th>Side</th>
                 <th>Qty</th>
                 <th>Entry</th>
@@ -963,6 +1669,65 @@ app.innerHTML = `
             </tbody>
           </table>
         </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════════ -->
+    <!-- IPO SIMULATION PANEL                                 -->
+    <!-- ═══════════════════════════════════════════════════ -->
+    <section class="ipo-simulation-panel glass-card" style="margin-top: 2rem; padding: 1.5rem;" id="ipo-simulation-section">
+      <!-- Header -->
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.25rem;flex-wrap:wrap;gap:0.75rem;">
+        <h4 style="display:flex;align-items:center;gap:0.5rem;margin:0;font-size:1.1rem;font-weight:700;color:#fff;">
+          <span style="display:inline-block;width:8px;height:8px;background:var(--accent-gold);border-radius:50%;animation:pulse 2s infinite;"></span>
+          📈 IPO Simulation — SGA Stock Shares
+          <span style="font-size:0.6rem;padding:2px 6px;border-radius:4px;background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.25);color:var(--accent-gold);margin-left:4px;">100B SHARES / STATE</span>
+        </h4>
+        <div style="display:flex;gap:0.5rem;">
+          <button class="ipo-global-btn ipo-global-btn-run" onclick="window.runAllIPOs()" title="Run all 50 pending state IPOs in sequence">
+            🚀 Run All IPOs
+          </button>
+          <button class="ipo-global-btn ipo-global-btn-reset" onclick="window.resetAllIPOs()" title="Reset all IPOs to pending">
+            ↺ Reset
+          </button>
+        </div>
+      </div>
+
+      <!-- Two-column layout: selected state card + log -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1.25rem;">
+        <!-- Selected State IPO Card -->
+        <div id="ipo-selected-card" class="ipo-card">
+          <div style="text-align:center;color:rgba(255,255,255,0.3);padding:2rem;font-size:0.8rem;">Select a state from the map to view its IPO details.</div>
+        </div>
+
+        <!-- Capital Injection / Progress Log -->
+        <div class="ipo-log-container">
+          <div style="font-size:0.6rem;color:rgba(255,255,255,0.4);text-transform:uppercase;font-weight:700;letter-spacing:0.06em;margin-bottom:8px;">📡 Live IPO Event Log</div>
+          <div id="ipo-log-panel" class="ipo-log-panel">
+            <div class="ipo-log-entry" style="color:rgba(255,255,255,0.3);">Awaiting IPO simulation launch...</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- All States IPO Table -->
+      <div style="font-size:0.6rem;color:rgba(255,255,255,0.4);text-transform:uppercase;font-weight:700;letter-spacing:0.06em;margin-bottom:8px;">All State IPO Status</div>
+      <div class="table-container" style="max-height:360px;overflow-y:auto;">
+        <table class="ipo-states-table">
+          <thead style="position:sticky;top:0;z-index:5;">
+            <tr>
+              <th>State</th>
+              <th>Price Target</th>
+              <th>Market Cap</th>
+              <th>Underwriter</th>
+              <th>Current Price</th>
+              <th>Status</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="ipo-states-table-body">
+            <tr><td colspan="7" style="text-align:center;color:rgba(255,255,255,0.3);padding:2rem;">Loading IPO data...</td></tr>
+          </tbody>
+        </table>
+      </div>
     </section>
 
     <!-- TRADE HISTORY TAB -->
@@ -1018,7 +1783,7 @@ app.innerHTML = `
           <thead style="position: sticky; top: 0; background: #0c0f16; z-index: 5; border-bottom: 1px solid var(--glass-border);">
             <tr>
               <th style="padding: 0.6rem 0.75rem; font-size: 0.65rem; text-transform: uppercase; color: var(--text-secondary); font-weight: 700; border-bottom: 1px solid rgba(255,255,255,0.05);">Time</th>
-              <th style="padding: 0.6rem 0.75rem; font-size: 0.65rem; text-transform: uppercase; color: var(--text-secondary); font-weight: 700; border-bottom: 1px solid rgba(255,255,255,0.05);">Contract</th>
+              <th style="padding: 0.6rem 0.75rem; font-size: 0.65rem; text-transform: uppercase; color: var(--text-secondary); font-weight: 700; border-bottom: 1px solid rgba(255,255,255,0.05);">Asset</th>
               <th style="padding: 0.6rem 0.75rem; font-size: 0.65rem; text-transform: uppercase; color: var(--text-secondary); font-weight: 700; border-bottom: 1px solid rgba(255,255,255,0.05);">Side</th>
               <th style="padding: 0.6rem 0.75rem; font-size: 0.65rem; text-transform: uppercase; color: var(--text-secondary); font-weight: 700; border-bottom: 1px solid rgba(255,255,255,0.05);">Qty</th>
               <th style="padding: 0.6rem 0.75rem; font-size: 0.65rem; text-transform: uppercase; color: var(--text-secondary); font-weight: 700; border-bottom: 1px solid rgba(255,255,255,0.05);">Entry</th>
@@ -1059,7 +1824,7 @@ app.innerHTML = `
               <thead style="position: sticky; top: 0; background: #0c0f16; z-index: 5; border-bottom: 1px solid var(--glass-border);">
                 <tr>
                   <th style="padding: 0.6rem 0.75rem; font-size: 0.7rem; text-transform: uppercase; color: var(--text-secondary); font-weight: 700; border-bottom: 1px solid rgba(255,255,255,0.05);">Timestamp</th>
-                  <th style="padding: 0.6rem 0.75rem; font-size: 0.7rem; text-transform: uppercase; color: var(--text-secondary); font-weight: 700; border-bottom: 1px solid rgba(255,255,255,0.05);">Contract</th>
+                  <th style="padding: 0.6rem 0.75rem; font-size: 0.7rem; text-transform: uppercase; color: var(--text-secondary); font-weight: 700; border-bottom: 1px solid rgba(255,255,255,0.05);">Asset</th>
                   <th style="padding: 0.6rem 0.75rem; font-size: 0.7rem; text-transform: uppercase; color: var(--text-secondary); font-weight: 700; border-bottom: 1px solid rgba(255,255,255,0.05);">Party</th>
                   <th style="padding: 0.6rem 0.75rem; font-size: 0.7rem; text-transform: uppercase; color: var(--text-secondary); font-weight: 700; border-bottom: 1px solid rgba(255,255,255,0.05);">Side</th>
                   <th style="padding: 0.6rem 0.75rem; font-size: 0.7rem; text-transform: uppercase; color: var(--text-secondary); font-weight: 700; border-bottom: 1px solid rgba(255,255,255,0.05);">Qty</th>
@@ -1130,18 +1895,31 @@ app.innerHTML = `
         <div>
           <h3 style="color: var(--accent-gold); margin-bottom: 1rem;">The EOI Formula</h3>
           <p style="color: var(--text-secondary); margin-bottom: 1.5rem;">The Sovereign Economic Output Index is a composite metric of a nation's macroeconomic health:</p>
-          <div style="font-family: monospace; background: rgba(0,0,0,0.3); padding: 1.5rem; border-radius: 0.5rem; border: 1px solid var(--glass-border); font-size: 0.95rem; line-height: 1.6;">
-            <div style="font-size: 1.1rem; font-weight: bold; color: var(--accent-gold); margin-bottom: 0.75rem; font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">Economic Output Index (EOI)</div>
-            <div style="color: #fff; margin-bottom: 0.5rem; font-size: 1rem; word-break: break-word; font-weight: 500; letter-spacing: 0.05em;">
-              EOI = [a·GDP + b·Growth + c·Tax + d·Employment + e·Business + f·Investment + g·Productivity] × <span style="color: #ef4444;">Inflation Factor</span>
+          <div style="background: rgba(0,0,0,0.25); padding: 2rem 2.5rem; border-radius: 0.75rem; border: 1px solid var(--glass-border);">
+            <div style="font-size: 0.75rem; font-weight: 700; color: var(--accent-gold); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 1.5rem; font-family: system-ui, sans-serif;">Economic Output Index (EOI)</div>
+
+            <div style="font-family: 'Georgia', 'Times New Roman', serif; font-size: 1rem; color: #e2e8f0; line-height: 2.4; overflow-x: auto;">
+              <div style="white-space: nowrap;">
+                EOI &nbsp;= &nbsp;( a · GDP &nbsp;+&nbsp; b · GDP growth rate &nbsp;+&nbsp; c · Tax Revenue
+              </div>
+              <div style="white-space: nowrap; padding-left: 4.5rem;">
+                + &nbsp;d · Employment Rate &nbsp;+&nbsp; e · Business Formation Rate &nbsp;+&nbsp; f · Investment Inflow
+              </div>
+              <div style="white-space: nowrap; padding-left: 4.5rem;">
+                + &nbsp;g · Productivity Rate &nbsp;) &nbsp;× &nbsp;<span style="color: #ef4444; font-family: system-ui, sans-serif; font-size: 0.9rem;">(1 − 0.05 · max(0, CPI − 2.0%))</span>
+              </div>
             </div>
-            <div style="color: var(--accent-gold); font-size: 0.85rem; margin-bottom: 0.5rem; font-family: system-ui, sans-serif; font-weight: 700;">
-              SGA Futures Contract Price = EOI × $2,000.00
+
+            <div style="margin-top: 1.75rem; padding-top: 1.25rem; border-top: 1px solid rgba(255,255,255,0.07); font-family: system-ui, sans-serif;">
+              <div style="color: var(--accent-gold); font-size: 0.85rem; font-weight: 700; margin-bottom: 0.6rem;">
+                SGA Futures Contract Price = EOI × $2,000.00
+              </div>
+              <div style="color: var(--text-secondary); font-size: 0.75rem; line-height: 1.7;">
+                <span style="color: #ef4444;">Inflation Factor</span> = 1 − (0.05 × max(0, State CPI − 2.0%)) · <span style="opacity: 0.7;">At or below 2% = no penalty. Each 1% above = 5% EOI haircut.</span>
+              </div>
             </div>
-            <div style="color: var(--text-secondary); font-size: 0.75rem; margin-bottom: 1rem; font-family: system-ui, sans-serif; line-height: 1.4;">
-              <span style="color: #ef4444;">Inflation Factor</span> = 1 − (0.05 × max(0, State CPI − 2.0%)) · <span style="opacity: 0.7;">At or below 2% = no penalty. Each 1% above = 5% EOI haircut.</span>
-            </div>
-            <div style="font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 0.8rem; color: var(--text-secondary); display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.5rem 1rem; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 0.75rem; line-height: 1.5;">
+
+            <div style="font-family: system-ui, sans-serif; font-size: 0.8rem; color: var(--text-secondary); display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.5rem 1rem; border-top: 1px solid rgba(255,255,255,0.07); padding-top: 1rem; margin-top: 1.25rem; line-height: 1.5;">
               <div><strong style="color: var(--accent-blue)">GDP:</strong> Gross Domestic Product (a = 0.25)</div>
               <div><strong style="color: var(--accent-blue)">Growth:</strong> GDP Growth Rate (b = 0.10)</div>
               <div><strong style="color: var(--accent-blue)">Tax:</strong> Tax Revenue (c = 0.10)</div>
@@ -1152,6 +1930,7 @@ app.innerHTML = `
               <div><strong style="color: #ef4444">Inflation:</strong> CPI Deflator (h = 0.05)</div>
             </div>
           </div>
+
           
           <div style="margin-top: 1.5rem; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); padding: 1.5rem; border-radius: 0.5rem; font-family: system-ui, sans-serif;">
             <h4 style="color: #fff; margin: 0 0 1rem 0; font-size: 0.95rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--accent-gold);">Weight & Metric Explanation</h4>
@@ -1277,42 +2056,7 @@ app.innerHTML = `
               <div style="font-size: 0.52rem; color: var(--text-secondary); margin-top: 0.25rem; font-style: italic;">Supports YouTube/Vimeo, images (.jpg/.png), PDFs, or any document URL.</div>
             </div>
 
-            <!-- Audit Report Section -->
-            <div style="border-top: 1px solid rgba(255,255,255,0.06); padding-top: 0.75rem; margin-top: 0.75rem; margin-bottom: 0.75rem;">
-              <div style="margin-bottom: 0.45rem;">
-                <span style="font-size: 0.62rem; color: #38bdf8; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;">🔍 Audit Report</span>
-              </div>
-              <div style="display: flex; flex-direction: column; gap: 0.45rem;">
-                <div class="form-group" style="margin-bottom: 0;">
-                  <label>AUDITOR / FIRM</label>
-                  <input type="text" id="audit-firm" placeholder="e.g. Deloitte &amp; Touche LLP">
-                </div>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
-                  <div class="form-group" style="margin-bottom: 0;">
-                    <label>AUDIT DATE</label>
-                    <input type="date" id="audit-date">
-                  </div>
-                  <div class="form-group" style="margin-bottom: 0;">
-                    <label>STATUS</label>
-                    <select id="audit-status">
-                      <option value="">— No Audit —</option>
-                      <option value="Pending">⏳ Pending Review</option>
-                      <option value="Passed">✓ Passed</option>
-                      <option value="Qualified">⚠ Qualified Opinion</option>
-                      <option value="Failed">✗ Failed</option>
-                    </select>
-                  </div>
-                </div>
-                <div class="form-group" style="margin-bottom: 0;">
-                  <label>REPORT URL</label>
-                  <input type="url" id="audit-report-url" placeholder="https://example.com/audit-report.pdf">
-                </div>
-                <div class="form-group" style="margin-bottom: 0;">
-                  <label>AUDIT NOTES</label>
-                  <textarea id="audit-notes" rows="2" placeholder="Optional: key findings, scope, qualifications..."></textarea>
-                </div>
-              </div>
-            </div>
+            <!-- Audit added post-entry via record panel -->
 
             <button type="submit" class="trade-btn buy-btn" style="width: 100%;">Record to Ledger</button>
           </form>
@@ -1350,9 +2094,11 @@ app.innerHTML = `
                   <th>Date</th>
                   <th style="text-align: center;">Region</th>
                   <th>Category</th>
+                  <th>Type</th>
                   <th>Agency</th>
                   <th>Description</th>
                   <th>Amount</th>
+                  <th style="text-align: center;">Audit</th>
                   <th style="text-align: right;">Hash Anchor</th>
                 </tr>
               </thead>
@@ -1363,6 +2109,102 @@ app.innerHTML = `
           </div>
         </div>
 
+      </div>
+    </section>
+
+    <!-- YIELD DAY SECTION -->
+    <section class="yield-day-section glass-card" id="yield-day" style="margin-top: 4rem;">
+      <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 2rem;">
+        <div>
+          <h3 style="color: var(--accent-gold); margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem;">
+            <span style="display: inline-block; width: 8px; height: 8px; background: var(--accent-gold); border-radius: 50%; animation: pulse 2s infinite;"></span>
+            Yield Day Schedule
+          </h3>
+          <p style="color: var(--text-secondary); margin: 0; font-size: 0.9rem;">
+            Executes on the <strong>last day of every month</strong>. Shorts are banned for 5 minutes during the drawdown to protect sovereign extraction.
+          </p>
+        </div>
+      </div>
+
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
+        <!-- EASTERN -->
+        <div style="background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.05); border-radius: 0.5rem; padding: 1rem;">
+          <h4 style="color: #38bdf8; font-size: 0.85rem; text-transform: uppercase; margin-top: 0; margin-bottom: 1rem; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 0.5rem;">Eastern (EST)</h4>
+          <ul style="list-style: none; padding: 0; margin: 0; color: var(--text-secondary); font-size: 0.8rem; display: flex; flex-direction: column; gap: 0.4rem; font-family: monospace;">
+            <li><span style="color: #fff;">06:00 AM</span> - ME</li>
+            <li><span style="color: #fff;">06:15 AM</span> - NH</li>
+            <li><span style="color: #fff;">06:30 AM</span> - VT</li>
+            <li><span style="color: #fff;">06:45 AM</span> - MA</li>
+            <li><span style="color: #fff;">07:00 AM</span> - RI</li>
+            <li><span style="color: #fff;">07:15 AM</span> - CT</li>
+            <li><span style="color: #fff;">07:30 AM</span> - NY</li>
+            <li><span style="color: #fff;">07:45 AM</span> - NJ</li>
+            <li><span style="color: #fff;">08:00 AM</span> - PA</li>
+            <li><span style="color: #fff;">08:15 AM</span> - DE</li>
+            <li><span style="color: #fff;">08:30 AM</span> - MD</li>
+            <li><span style="color: #fff;">08:45 AM</span> - VA</li>
+            <li><span style="color: #fff;">09:00 AM</span> - WV</li>
+            <li><span style="color: #fff;">09:15 AM</span> - NC</li>
+            <li><span style="color: #fff;">09:30 AM</span> - SC</li>
+            <li><span style="color: #fff;">09:45 AM</span> - GA</li>
+            <li><span style="color: #fff;">10:00 AM</span> - FL</li>
+            <li><span style="color: #fff;">10:15 AM</span> - OH</li>
+            <li><span style="color: #fff;">10:30 AM</span> - MI</li>
+            <li><span style="color: #fff;">10:45 AM</span> - IN</li>
+            <li><span style="color: #fff;">11:00 AM</span> - KY</li>
+          </ul>
+        </div>
+
+        <!-- CENTRAL -->
+        <div style="background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.05); border-radius: 0.5rem; padding: 1rem;">
+          <h4 style="color: #10b981; font-size: 0.85rem; text-transform: uppercase; margin-top: 0; margin-bottom: 1rem; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 0.5rem;">Central (EST)</h4>
+          <ul style="list-style: none; padding: 0; margin: 0; color: var(--text-secondary); font-size: 0.8rem; display: flex; flex-direction: column; gap: 0.4rem; font-family: monospace;">
+            <li><span style="color: #fff;">11:15 AM</span> - WI</li>
+            <li><span style="color: #fff;">11:30 AM</span> - IL</li>
+            <li><span style="color: #fff;">11:45 AM</span> - MN</li>
+            <li><span style="color: #fff;">12:00 PM</span> - IA</li>
+            <li><span style="color: #fff;">12:15 PM</span> - MO</li>
+            <li><span style="color: #fff;">12:30 PM</span> - ND</li>
+            <li><span style="color: #fff;">12:45 PM</span> - SD</li>
+            <li><span style="color: #fff;">01:00 PM</span> - NE</li>
+            <li><span style="color: #fff;">01:15 PM</span> - KS</li>
+            <li><span style="color: #fff;">01:30 PM</span> - OK</li>
+            <li><span style="color: #fff;">01:45 PM</span> - TX</li>
+            <li><span style="color: #fff;">02:00 PM</span> - AR</li>
+            <li><span style="color: #fff;">02:15 PM</span> - LA</li>
+            <li><span style="color: #fff;">02:30 PM</span> - MS</li>
+            <li><span style="color: #fff;">02:45 PM</span> - TN</li>
+            <li><span style="color: #fff;">03:00 PM</span> - AL</li>
+          </ul>
+        </div>
+
+        <!-- MOUNTAIN & PACIFIC -->
+        <div style="display: flex; flex-direction: column; gap: 1rem;">
+          <div style="background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.05); border-radius: 0.5rem; padding: 1rem; flex: 1;">
+            <h4 style="color: #f59e0b; font-size: 0.85rem; text-transform: uppercase; margin-top: 0; margin-bottom: 1rem; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 0.5rem;">Mountain (EST)</h4>
+            <ul style="list-style: none; padding: 0; margin: 0; color: var(--text-secondary); font-size: 0.8rem; display: flex; flex-direction: column; gap: 0.4rem; font-family: monospace;">
+              <li><span style="color: #fff;">03:15 PM</span> - MT</li>
+              <li><span style="color: #fff;">03:30 PM</span> - WY</li>
+              <li><span style="color: #fff;">03:45 PM</span> - CO</li>
+              <li><span style="color: #fff;">04:00 PM</span> - NM</li>
+              <li><span style="color: #fff;">04:15 PM</span> - ID</li>
+              <li><span style="color: #fff;">04:30 PM</span> - UT</li>
+              <li><span style="color: #fff;">04:45 PM</span> - AZ</li>
+            </ul>
+          </div>
+          
+          <div style="background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.05); border-radius: 0.5rem; padding: 1rem; flex: 1;">
+            <h4 style="color: #a78bfa; font-size: 0.85rem; text-transform: uppercase; margin-top: 0; margin-bottom: 1rem; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 0.5rem;">Pacific & Non-Contig</h4>
+            <ul style="list-style: none; padding: 0; margin: 0; color: var(--text-secondary); font-size: 0.8rem; display: flex; flex-direction: column; gap: 0.4rem; font-family: monospace;">
+              <li><span style="color: #fff;">05:00 PM</span> - WA</li>
+              <li><span style="color: #fff;">05:15 PM</span> - OR</li>
+              <li><span style="color: #fff;">05:30 PM</span> - NV</li>
+              <li><span style="color: #fff;">05:45 PM</span> - CA</li>
+              <li><span style="color: #fff;">06:00 PM</span> - AK</li>
+              <li><span style="color: #fff;">06:15 PM</span> - HI</li>
+            </ul>
+          </div>
+        </div>
       </div>
     </section>
     </div> <!-- end of dashboard-page -->
@@ -1564,15 +2406,34 @@ app.innerHTML = `
     </div>
   </div>
 
-  <!-- Detail Modal Overlay -->
-  <div id="detail-modal" class="modal-overlay">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h3>Ledger Entry Details</h3>
-        <button id="close-modal-btn" class="close-modal-btn">&times;</button>
+  <!-- Record Detail Slide-Over Panel -->
+  <div id="record-panel-overlay" class="record-panel-overlay">
+    <div id="record-panel" class="record-panel">
+      <!-- Panel Header -->
+      <div class="record-panel-header">
+        <div>
+          <div id="rp-header-badge" style="display:flex;gap:0.5rem;align-items:center;margin-bottom:0.4rem;"></div>
+          <div id="rp-header-title" style="font-size:1.05rem;font-weight:700;color:#fff;"></div>
+          <div id="rp-header-meta" style="font-size:0.75rem;color:var(--text-secondary);margin-top:0.2rem;"></div>
+        </div>
+        <button id="close-record-panel-btn" class="close-modal-btn" style="flex-shrink:0;">&#x2715;</button>
       </div>
-      <div class="modal-body" id="modal-details-content">
-        <!-- populated dynamically -->
+
+      <!-- Tab Nav -->
+      <div class="record-panel-tabs" id="rp-tabs">
+        <button class="rp-tab active" data-tab="overview">Overview</button>
+        <button class="rp-tab" data-tab="timeline">Timeline</button>
+        <button class="rp-tab" data-tab="milestones">Milestones</button>
+        <button class="rp-tab" data-tab="contractor">Contractor Payments</button>
+        <button class="rp-tab" data-tab="changeorders">Change Orders</button>
+        <button class="rp-tab" data-tab="valuation">Asset Valuation</button>
+        <button class="rp-tab" data-tab="media">Media</button>
+        <button class="rp-tab" data-tab="audit">Audit Report</button>
+      </div>
+
+      <!-- Tab Content -->
+      <div class="record-panel-body" id="record-panel-body">
+        <!-- Populated dynamically -->
       </div>
     </div>
   </div>
@@ -1656,6 +2517,8 @@ async function init() {
   // Initialize Trading Transactions and Revenue Tracker
   renderTransactions();
   renderClearingRevenue();
+  renderIPOPanel();
+
 
   // Start multi-state background simulation
   startGlobalBackgroundSimulation();
@@ -1690,11 +2553,15 @@ function selectState(state, element) {
 
   // Update Details
   const eoi = calculateEOI(state);
-  const price = (eoi * CONTRACT_SPECS.pricingScale).toFixed(2);
+  const targetPrice = window.activeInstrumentType === 'stock'
+    ? window.getStockPrice(state.id)
+    : (eoi * CONTRACT_SPECS.pricingScale);
+  const decimals = window.activeInstrumentType === 'stock' ? (targetPrice < 1.0 ? 4 : 2) : 2;
+  const price = targetPrice.toFixed(decimals);
 
-  // Calculate state's proportion of the $1 Trillion collective market injection
+  // Calculate state's proportion of the $50 Trillion collective market injection
   const stateProportion = eoi / totalNationalEOI;
-  const stateInjectionAmount = 1_000_000_000_000 * stateProportion;
+  const stateInjectionAmount = 50_000_000_000_000 * stateProportion;
   const split = getPayoutSplit(stateInjectionAmount);
 
   const changePct = getDailyChangePct(state);
@@ -1703,7 +2570,7 @@ function selectState(state, element) {
   const changeColor = isUp ? '#10b981' : '#ef4444';
   const arrow = isUp ? '▲' : '▼';
 
-  const formattedPrice = parseFloat(price).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const formattedPrice = parseFloat(price).toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
 
   document.getElementById('selected-state-name').textContent = state.name;
   document.getElementById('eoi-value').textContent = eoi;
@@ -1711,13 +2578,9 @@ function selectState(state, element) {
 
   const vol24hEl = document.getElementById('market-24h-vol');
   const avg7dEl = document.getElementById('market-7d-avg');
-  const oiEl = document.getElementById('market-oi');
-  const outstandingEl = document.getElementById('market-outstanding');
 
   if (vol24hEl) vol24hEl.innerHTML = formatScaledValue(BASE_MARKET_STATS.vol24h, stateProportion);
   if (avg7dEl) avg7dEl.innerHTML = formatScaledValue(BASE_MARKET_STATS.avg7d, stateProportion);
-  if (oiEl) oiEl.innerHTML = formatScaledValue(BASE_MARKET_STATS.oi, stateProportion);
-  if (outstandingEl) outstandingEl.innerHTML = formatScaledValue(BASE_MARKET_STATS.outstanding, stateProportion, true);
 
   const publicPayoutEl = document.getElementById('public-payout');
   if (publicPayoutEl) publicPayoutEl.textContent = formatCurrency(split.state);
@@ -1747,17 +2610,17 @@ function selectState(state, element) {
   if (tradingPrice) tradingPrice.textContent = `$${formattedPrice}`;
 
   // Update contract specs
-  const marginReq = (parseFloat(price) * CONTRACT_SPECS.multiplier * CONTRACT_SPECS.initialMarginPct);
-  const specMargin = document.getElementById('spec-margin');
-  if (specMargin) specMargin.textContent = formatCurrency(marginReq);
-  const specExpiry = document.getElementById('spec-expiry');
-  if (specExpiry) specExpiry.textContent = expiry.label;
+  updateContractSpecsUI();
+
+  // Update IPO panel card for selected state
+  renderIPOPanel();
 
   // Start live price simulation
   startLivePricing(parseFloat(price));
 
   // Update Chart with Real-Time Intraday Candlesticks (600 periods of 10-second ticks for deep scrollback history)
   const currentPrice = parseFloat(price);
+
   const trend = state.growth >= 0 ? 1 : -1;
   const ohlcData = new Array(600);
   let priceCursor = currentPrice;
@@ -1767,25 +2630,27 @@ function selectState(state, element) {
   window.chartScrollOffset = 0;
   window.visibleCandlesCount = 45;
 
+  const specs = getActiveSpecs();
+
   // Generate 600 candles of 10s intervals backwards from the current mark price
   for (let i = 599; i >= 0; i--) {
     const time = new Date(now.getTime() - (599 - i) * 10000);
     const timeStr = formatTime(time);
 
-    const close = parseFloat(priceCursor.toFixed(2));
+    const close = parseFloat(priceCursor.toFixed(decimals));
 
     // 10-second scale volatility (1 to 5 ticks)
-    const tickVol = CONTRACT_SPECS.tickSize * (1 + Math.random() * 4);
-    const change = (Math.random() * 2 - 1) * tickVol + (trend * CONTRACT_SPECS.tickSize * 0.4);
-    const open = parseFloat((close - change).toFixed(2));
+    const tickVol = specs.tickSize * (1 + Math.random() * 4);
+    const change = (Math.random() * 2 - 1) * tickVol + (trend * specs.tickSize * 0.4);
+    const open = parseFloat((close - change).toFixed(decimals));
 
-    const high = parseFloat((Math.max(open, close) + Math.random() * CONTRACT_SPECS.tickSize * 2).toFixed(2));
-    const low = parseFloat((Math.min(open, close) - Math.random() * CONTRACT_SPECS.tickSize * 2).toFixed(2));
+    const high = parseFloat((Math.max(open, close) + Math.random() * specs.tickSize * 2).toFixed(decimals));
+    const low = parseFloat((Math.min(open, close) - Math.random() * specs.tickSize * 2).toFixed(decimals));
 
     ohlcData[i] = { time: timeStr, open, high, low, close };
 
     // Connect next candle open to current candle's open with a minor tick gap
-    priceCursor = open + (Math.random() * 2 - 1) * CONTRACT_SPECS.tickSize;
+    priceCursor = open + (Math.random() * 2 - 1) * specs.tickSize;
   }
 
   if (chartCtx) {
@@ -2133,16 +2998,40 @@ function drawChart() {
 function renderTable() {
   const tbody = document.getElementById('table-body');
   const sortedStates = [...statesData].sort((a, b) => b.gdp - a.gdp);
+  const isStock = window.activeInstrumentType === 'stock';
+
+  // Update table headers
+  const priceHeader = document.getElementById('table-header-price');
+  const eoiHeader = document.getElementById('table-header-eoi');
+  if (priceHeader) priceHeader.textContent = isStock ? 'Share Price' : 'SGA Price';
+  if (eoiHeader) eoiHeader.textContent = isStock ? 'IPO Status' : 'EOI Index';
 
   tbody.innerHTML = sortedStates.map(state => {
     const eoi = calculateEOI(state);
-    const price = (eoi * CONTRACT_SPECS.pricingScale).toFixed(2);
-    const formattedPrice = parseFloat(price).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const futuresPrice = (eoi * CONTRACT_SPECS.pricingScale).toFixed(2);
+    const stockPrice = window.getStockPrice(state.id);
+    const stockDecimals = stockPrice < 1.0 ? 4 : 2;
+    const formattedFuturesPrice = parseFloat(futuresPrice).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const formattedStockPrice = stockPrice.toLocaleString(undefined, { minimumFractionDigits: stockDecimals, maximumFractionDigits: stockDecimals });
+
     const changePct = getDailyChangePct(state);
     const isUp = changePct >= 0;
     const changeText = isUp ? `+${changePct}%` : `${changePct}%`;
     const changeColor = isUp ? '#10b981' : '#ef4444';
     const arrow = isUp ? '▲' : '▼';
+
+    // Stock mode: price cell shows share price; eoi cell shows IPO status badge
+    const ipoState = state.ipoStatus || 'pending';
+    const ipoBadgeColor = ipoState === 'completed' ? '#10b981' : ipoState === 'running' ? 'var(--accent-gold)' : 'rgba(255,255,255,0.3)';
+    const ipoBadgeText = ipoState === 'completed' ? 'LIVE' : ipoState === 'running' ? 'RUNNING' : 'PENDING';
+
+    const eoiCell = isStock
+      ? `<span style="font-size:0.65rem;font-weight:700;padding:2px 6px;border-radius:3px;background:${ipoBadgeColor}18;border:1px solid ${ipoBadgeColor}44;color:${ipoBadgeColor};">${ipoBadgeText}</span>`
+      : `${eoi}`;
+
+    const priceCell = isStock
+      ? `<span style="color:${ipoState === 'completed' ? '#10b981' : ipoState === 'running' ? 'var(--accent-gold)' : 'rgba(255,255,255,0.35)'};">$${formattedStockPrice}</span>`
+      : `<span style="color:var(--accent-blue);">$${formattedFuturesPrice}</span>`;
 
     return `
       <tr class="state-row" data-id="${state.id}">
@@ -2150,8 +3039,8 @@ function renderTable() {
         <td>$${state.gdp}B</td>
         <td style="color: ${state.growth >= 0 ? '#10b981' : '#ef4444'}">${state.growth}%</td>
         <td style="color: #ef4444;">${state.inflation}%</td>
-        <td style="color: var(--accent-gold); font-weight: 700;">${eoi}</td>
-        <td style="color: var(--accent-blue);">$${formattedPrice}</td>
+        <td style="color: ${isStock ? 'inherit' : 'var(--accent-gold)'}; font-weight: ${isStock ? 'normal' : '700'};">${eoiCell}</td>
+        <td>${priceCell}</td>
         <td style="color: ${changeColor}; font-weight: 600; font-family: monospace;">${arrow} ${changeText}</td>
       </tr>
     `;
@@ -2209,14 +3098,27 @@ function generateOrderBook(price) {
   ];
 
   const contraction = window.liquidityContraction || 1.0;
+  const specs = getActiveSpecs();
+
+  let sizeMultiplier = 1;
+  let tickSize = specs.tickSize;
+  let decimals = 2;
+
+  if (window.activeInstrumentType === 'stock') {
+    sizeMultiplier = 1000000; // 1,000,000x liquidity for stocks (100B outstanding)
+    if (price < 1.00) {
+      tickSize = 0.0001; // 4 decimals tick size for sub-dollar stocks
+      decimals = 4;
+    }
+  }
 
   for (let i = 1; i <= 4; i++) {
     const scale = levelScales[i - 1];
-    const bidPrice = parseFloat((price - i * CONTRACT_SPECS.tickSize).toFixed(2));
-    const askPrice = parseFloat((price + i * CONTRACT_SPECS.tickSize).toFixed(2));
+    const bidPrice = parseFloat((price - i * tickSize).toFixed(decimals));
+    const askPrice = parseFloat((price + i * tickSize).toFixed(decimals));
 
-    const bidSize = Math.floor((scale.sizeMin + Math.random() * (scale.sizeMax - scale.sizeMin)) * contraction);
-    const askSize = Math.floor((scale.sizeMin + Math.random() * (scale.sizeMax - scale.sizeMin)) * contraction);
+    const bidSize = Math.floor((scale.sizeMin + Math.random() * (scale.sizeMax - scale.sizeMin)) * contraction * sizeMultiplier);
+    const askSize = Math.floor((scale.sizeMin + Math.random() * (scale.sizeMax - scale.sizeMin)) * contraction * sizeMultiplier);
 
     bids.push({ price: bidPrice, size: bidSize });
     asks.push({ price: askPrice, size: askSize });
@@ -2242,26 +3144,45 @@ function replenishOrderBook() {
   ];
 
   const contraction = window.liquidityContraction || 1.0;
+  const specs = getActiveSpecs();
+
+  let sizeMultiplier = 1;
+  let tickSize = specs.tickSize;
+  let decimals = 2;
+  let tolerance = 0.001;
+
+  if (window.activeInstrumentType === 'stock') {
+    sizeMultiplier = 1000000; // 1,000,000x liquidity for stocks (100B outstanding)
+    if (currentLivePrice < 1.00) {
+      tickSize = 0.0001; // 4 decimals tick size for sub-dollar stocks
+      decimals = 4;
+      tolerance = 0.00001;
+    }
+  }
 
   for (let i = 1; i <= 4; i++) {
     const scale = levelScales[i - 1];
-    const bidPrice = parseFloat((currentLivePrice - i * CONTRACT_SPECS.tickSize).toFixed(2));
-    const askPrice = parseFloat((currentLivePrice + i * CONTRACT_SPECS.tickSize).toFixed(2));
+    const bidPrice = parseFloat((currentLivePrice - i * tickSize).toFixed(decimals));
+    const askPrice = parseFloat((currentLivePrice + i * tickSize).toFixed(decimals));
 
-    const existingBid = orderBook.bids.find(b => Math.abs(b.price - bidPrice) < 0.001);
-    const existingAsk = orderBook.asks.find(a => Math.abs(a.price - askPrice) < 0.001);
+    const existingBid = orderBook.bids.find(b => Math.abs(b.price - bidPrice) < tolerance);
+    const existingAsk = orderBook.asks.find(a => Math.abs(a.price - askPrice) < tolerance);
 
-    let bidSize = existingBid ? existingBid.size : Math.floor((scale.sizeMin + Math.random() * (scale.sizeMax - scale.sizeMin)) * contraction);
-    let askSize = existingAsk ? existingAsk.size : Math.floor((scale.sizeMin + Math.random() * (scale.sizeMax - scale.sizeMin)) * contraction);
+    let bidSize = existingBid ? existingBid.size : Math.floor((scale.sizeMin + Math.random() * (scale.sizeMax - scale.sizeMin)) * contraction * sizeMultiplier);
+    let askSize = existingAsk ? existingAsk.size : Math.floor((scale.sizeMin + Math.random() * (scale.sizeMax - scale.sizeMin)) * contraction * sizeMultiplier);
 
     // Smooth replenishment: Level 1 replenishes fastest (HFT market makers)
     const replenishRate = 5 - i;
-    if (bidSize < scale.sizeMin * contraction) bidSize += Math.floor(Math.random() * 20 + 10) * replenishRate;
-    if (askSize < scale.sizeMin * contraction) askSize += Math.floor(Math.random() * 20 + 10) * replenishRate;
+    if (bidSize < scale.sizeMin * contraction * sizeMultiplier) {
+      bidSize += Math.floor(Math.random() * 20 + 10) * replenishRate * sizeMultiplier;
+    }
+    if (askSize < scale.sizeMin * contraction * sizeMultiplier) {
+      askSize += Math.floor(Math.random() * 20 + 10) * replenishRate * sizeMultiplier;
+    }
 
     // Cap maximum level sizing to prevent runaway orderbooks
-    bidSize = Math.max(scale.sizeMin * contraction, Math.min(bidSize, scale.sizeMax * 1.5 * contraction));
-    askSize = Math.max(scale.sizeMin * contraction, Math.min(askSize, scale.sizeMax * 1.5 * contraction));
+    bidSize = Math.max(scale.sizeMin * contraction * sizeMultiplier, Math.min(bidSize, scale.sizeMax * 1.5 * contraction * sizeMultiplier));
+    askSize = Math.max(scale.sizeMin * contraction * sizeMultiplier, Math.min(askSize, scale.sizeMax * 1.5 * contraction * sizeMultiplier));
 
     bids.push({ price: bidPrice, size: bidSize });
     asks.push({ price: askPrice, size: askSize });
@@ -2280,6 +3201,7 @@ function renderOrderBook() {
 
   if (!asksDiv || !bidsDiv) return;
 
+  const specs = getActiveSpecs();
   const maxBidSize = Math.max(...orderBook.bids.map(b => b.size), 1);
   const maxAskSize = Math.max(...orderBook.asks.map(a => a.size), 1);
   const maxLevelSize = Math.max(maxBidSize, maxAskSize);
@@ -2287,7 +3209,7 @@ function renderOrderBook() {
   // Render Asks descending from Ask 4 to Ask 1
   const asksHTML = [...orderBook.asks].reverse().map(ask => {
     const depthPct = Math.min(100, (ask.size / maxLevelSize) * 100);
-    const notionalM = (ask.price * ask.size * CONTRACT_SPECS.multiplier) / 1e6;
+    const notionalM = (ask.price * ask.size * specs.multiplier) / 1e6;
     return `
       <div class="ob-row ask-row" style="display: grid; grid-template-columns: 1fr 1fr 1fr; padding: 0.2rem 0.5rem; font-size: 0.75rem; color: #ef4444; position: relative; background: linear-gradient(to left, rgba(239, 68, 68, 0.08) ${depthPct}%, transparent ${depthPct}%); cursor: pointer; border-bottom: 1px solid rgba(255,255,255,0.01);" onmousedown="document.getElementById('limit-price').value = ${ask.price.toFixed(2)}">
         <span style="font-weight: bold;">$${ask.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
@@ -2301,7 +3223,7 @@ function renderOrderBook() {
   // Render Bids descending from Bid 1 to Bid 4
   const bidsHTML = orderBook.bids.map(bid => {
     const depthPct = Math.min(100, (bid.size / maxLevelSize) * 100);
-    const notionalM = (bid.price * bid.size * CONTRACT_SPECS.multiplier) / 1e6;
+    const notionalM = (bid.price * bid.size * specs.multiplier) / 1e6;
     return `
       <div class="ob-row bid-row" style="display: grid; grid-template-columns: 1fr 1fr 1fr; padding: 0.2rem 0.5rem; font-size: 0.75rem; color: #10b981; position: relative; background: linear-gradient(to left, rgba(16, 185, 129, 0.08) ${depthPct}%, transparent ${depthPct}%); cursor: pointer; border-bottom: 1px solid rgba(255,255,255,0.01);" onmousedown="document.getElementById('limit-price').value = ${bid.price.toFixed(2)}">
         <span style="font-weight: bold;">$${bid.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
@@ -2316,7 +3238,7 @@ function renderOrderBook() {
   const bestBid = orderBook.bids[0]?.price || currentLivePrice;
   const bestAsk = orderBook.asks[0]?.price || currentLivePrice;
   const spread = parseFloat((bestAsk - bestBid).toFixed(2));
-  const ticks = Math.round(spread / CONTRACT_SPECS.tickSize);
+  const ticks = Math.round(spread / specs.tickSize);
   if (spreadVal) {
     spreadVal.textContent = `Spread: $${spread.toFixed(2)} (${ticks}T)`;
   }
@@ -2371,36 +3293,50 @@ function startLivePricing(basePrice) {
 
   // High-frequency 250ms tick loop for exceptionally smooth price updates
   liveTickInterval = setInterval(() => {
+    if (window.activeInstrumentType === 'stock' && currentTradingStateData) {
+      const state = statesData.find(s => s.id === currentTradingStateData.id);
+      if (state && state.ipoStatus !== 'completed') {
+        // Stock has not finished IPO; let the IPO simulation walk price.
+        return;
+      }
+    }
+
     const growth = currentTradingStateData ? currentTradingStateData.growth : 0;
 
     // Decay the liquidity contraction factor back to 1.0 (normal)
     if (window.liquidityContraction && window.liquidityContraction < 1.0) {
-      window.liquidityContraction = Math.min(1.0, window.liquidityContraction + 0.04); // Recovers 4% depth per tick (approx 3.75s to recover from 40%)
+      window.liquidityContraction = Math.min(1.0, window.liquidityContraction + 0.04); // Recovers 4% depth per tick
     }
 
     // 1. Calculate price movements: drift, momentum, reversion, and liquidity pull
+    const specs = getActiveSpecs();
     const secularDrift = (growth / 100) * 0.0012; // Visual-friendly drift factor
-    const noise = (Math.random() * 2 - 1) * CONTRACT_SPECS.tickSize * 0.45;
+    const noise = (Math.random() * 2 - 1) * specs.tickSize * 0.45;
     window.priceMomentum = window.priceMomentum * 0.90 + noise * 0.35;
 
-    const fairPrice = currentTradingStateData ? parseFloat((calculateEOI(currentTradingStateData) * CONTRACT_SPECS.pricingScale).toFixed(2)) : basePrice;
+    let fairPrice;
+    if (window.activeInstrumentType === 'stock') {
+      const state = statesData.find(s => s.id === currentTradingStateData.id);
+      fairPrice = state ? state.ipoPriceTarget : basePrice;
+    } else {
+      fairPrice = currentTradingStateData ? parseFloat((calculateEOI(currentTradingStateData) * specs.pricingScale).toFixed(2)) : basePrice;
+    }
     const meanReversionPull = (fairPrice - currentLivePrice) * 0.002;
 
-    // Scale liquidity imbalance logarithmically to prevent massive order sizes from causing pricing explosion
+    // Scale liquidity imbalance logarithmically
     const signedImbalance = window.liquidityImbalance || 0;
     const scaledImbalance = Math.sign(signedImbalance) * Math.log1p(Math.abs(signedImbalance)) * 100;
-    const imbalancePull = scaledImbalance * 0.00015; // Pull price in the direction of the order flow imbalance
+    const imbalancePull = scaledImbalance * 0.00015;
 
     let move = secularDrift + window.priceMomentum + meanReversionPull + imbalancePull + noise;
-
-
 
     // Smoothly decay the liquidity imbalance over time
     window.liquidityImbalance *= 0.94;
 
-    // 2. High probability of institutional blocks hitting the limit order book (approx 8% chance per 250ms tick)
+    const decimals = window.activeInstrumentType === 'stock' ? (currentLivePrice < 1.0 ? 4 : 2) : 2;
+
+    // 2. High probability of institutional blocks hitting the limit order book
     if (Math.random() < 0.08) {
-      // Trade direction is biased by active liquidity imbalance (order flow momentum)
       const buyBias = 0.50 + Math.max(-0.4, Math.min(0.4, scaledImbalance * 0.0015));
       const isBuy = Math.random() < buyBias;
       const tradeQty = Math.floor(50 + Math.random() * 550);
@@ -2417,18 +3353,18 @@ function startLivePricing(basePrice) {
           finalPrice = ask.price;
         }
         window.continuousPrice = finalPrice;
-        currentLivePrice = parseFloat(window.continuousPrice.toFixed(2));
-        window.liquidityImbalance += tradeQty * 0.15; // Buy sweeps inject positive imbalance
+        currentLivePrice = parseFloat(window.continuousPrice.toFixed(decimals));
+        window.liquidityImbalance += tradeQty * 0.15;
 
         if (remaining > 0) {
           const lastAskPrice = orderBook.asks[orderBook.asks.length - 1]?.price || currentLivePrice;
-          const penaltyPrice = lastAskPrice + CONTRACT_SPECS.tickSize * 2;
+          const penaltyPrice = lastAskPrice + specs.tickSize * 2;
           window.continuousPrice = penaltyPrice;
-          currentLivePrice = parseFloat(window.continuousPrice.toFixed(2));
+          currentLivePrice = parseFloat(window.continuousPrice.toFixed(decimals));
         }
         recentTrades.push({ time: formatTime(new Date()), side: 'BUY', qty: tradeQty, price: currentLivePrice, source: 'INST' });
         if (currentTradingStateData) {
-          window.calculateTradeFeeAndRecord('INST', currentTradingStateData.id, 'BUY', tradeQty, currentLivePrice, false, 0);
+          window.calculateTradeFeeAndRecord('INST', currentTradingStateData.id, 'BUY', tradeQty, currentLivePrice, false, 0, window.activeInstrumentType);
         }
       } else {
         // Walk bids
@@ -2442,37 +3378,37 @@ function startLivePricing(basePrice) {
           finalPrice = bid.price;
         }
         window.continuousPrice = finalPrice;
-        currentLivePrice = parseFloat(window.continuousPrice.toFixed(2));
-        window.liquidityImbalance -= tradeQty * 0.15; // Sell sweeps inject negative imbalance
+        currentLivePrice = parseFloat(window.continuousPrice.toFixed(decimals));
+        window.liquidityImbalance -= tradeQty * 0.15;
 
         if (remaining > 0) {
           const lastBidPrice = orderBook.bids[orderBook.bids.length - 1]?.price || currentLivePrice;
-          const penaltyPrice = lastBidPrice - CONTRACT_SPECS.tickSize * 2;
+          const penaltyPrice = lastBidPrice - specs.tickSize * 2;
           window.continuousPrice = penaltyPrice;
-          currentLivePrice = parseFloat(window.continuousPrice.toFixed(2));
+          currentLivePrice = parseFloat(window.continuousPrice.toFixed(decimals));
         }
         recentTrades.push({ time: formatTime(new Date()), side: 'SELL', qty: tradeQty, price: currentLivePrice, source: 'INST' });
         if (currentTradingStateData) {
-          window.calculateTradeFeeAndRecord('INST', currentTradingStateData.id, 'SELL', tradeQty, currentLivePrice, false, 0);
+          window.calculateTradeFeeAndRecord('INST', currentTradingStateData.id, 'SELL', tradeQty, currentLivePrice, false, 0, window.activeInstrumentType);
         }
       }
     } else {
-      // Direct tick movement via continuous price aggregation
       window.continuousPrice += move;
-      currentLivePrice = parseFloat(window.continuousPrice.toFixed(2));
+      currentLivePrice = parseFloat(window.continuousPrice.toFixed(decimals));
     }
 
-    if (currentLivePrice < 0.01) {
-      currentLivePrice = 0.01;
-      window.continuousPrice = 0.01;
+    const floorPrice = window.activeInstrumentType === 'stock' ? 0.001 : 0.01;
+    if (currentLivePrice < floorPrice) {
+      currentLivePrice = floorPrice;
+      window.continuousPrice = floorPrice;
     }
 
-    // Flashing visual active price in terminal (only when discrete tick changes, preventing visual noise)
+    // Flashing visual active price in terminal
     const priceEl = document.getElementById('trading-price');
     if (priceEl) {
       const prevPrice = parseFloat(priceEl.textContent.replace(/[$,]/g, '')) || 0;
       if (currentLivePrice !== prevPrice) {
-        priceEl.textContent = `$${currentLivePrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        priceEl.textContent = `$${currentLivePrice.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}`;
         priceEl.classList.remove('price-flash-up', 'price-flash-down');
         void priceEl.offsetWidth; // Trigger reflow
         priceEl.classList.add(currentLivePrice >= prevPrice ? 'price-flash-up' : 'price-flash-down');
@@ -2490,7 +3426,7 @@ function startLivePricing(basePrice) {
       if (currentLivePrice > activeCandle.high) activeCandle.high = currentLivePrice;
       if (currentLivePrice < activeCandle.low) activeCandle.low = currentLivePrice;
 
-      // 5. Scroll candlesticks every 40 ticks (10 seconds at 250ms interval)
+      // 5. Scroll candlesticks every 40 ticks
       window.tickCounter++;
       if (window.tickCounter >= 40) {
         window.tickCounter = 0;
@@ -2504,12 +3440,10 @@ function startLivePricing(basePrice) {
           close: currentLivePrice
         });
 
-        // If the user is panned back in history, lock their viewport to the same historical time
         if (window.chartScrollOffset > 0) {
           window.chartScrollOffset++;
         }
 
-        // Limit history to 1000 candles to prevent memory leakage while allowing rich scrollbacks
         if (currentChartData.length > 1000) {
           currentChartData.shift();
           if (window.chartScrollOffset > 0) {
@@ -2687,7 +3621,7 @@ window.triggerSovereignDrawdown = () => {
 
   // Update Payout Simulation details based on new national proportions
   const stateProportion = eoi / totalNationalEOI;
-  const stateInjectionAmount = 1_000_000_000_000 * stateProportion;
+  const stateInjectionAmount = 50_000_000_000_000 * stateProportion;
   const split = getPayoutSplit(stateInjectionAmount);
 
   const vol24hEl = document.getElementById('market-24h-vol');
@@ -2797,10 +3731,9 @@ function updateShortRestrictionUI() {
         sellBtn.style.filter = '';
         sellBtn.style.borderColor = '';
         sellBtn.style.background = '';
-        sellBtn.innerHTML = `
-          <span style="font-size: 0.65rem; display: block; opacity: 0.8; margin-bottom: 2px;">SHORT</span>
-          SELL
-        `;
+        sellBtn.innerHTML = window.activeInstrumentType === 'stock'
+          ? `<span style="font-size: 0.65rem; display: block; opacity: 0.8; margin-bottom: 2px;">SHORT SELL</span>SHORT`
+          : `<span style="font-size: 0.65rem; display: block; opacity: 0.8; margin-bottom: 2px;">SHORT</span>SELL`;
         showTradeNotification('✅ Short-selling restriction lifted. Normal trading resumed.', 'buy');
       }
     }, 1000);
@@ -2811,17 +3744,33 @@ function updateOrderSummary() {
   const qtyEl = document.getElementById('order-qty');
   if (!qtyEl) return;
   const qty = parseInt(qtyEl.value.replace(/,/g, '')) || 1;
-  const notional = currentLivePrice * CONTRACT_SPECS.multiplier * qty;
-  const margin = notional * CONTRACT_SPECS.initialMarginPct;
+  const specs = getActiveSpecs();
+  const notional = currentLivePrice * specs.multiplier * qty;
+  const margin = notional * specs.initialMarginPct;
 
   const notionalEl = document.getElementById('order-notional');
   const marginEl = document.getElementById('order-margin');
+  const marginLabelEl = document.getElementById('order-margin-label');
   const feeEl = document.getElementById('order-fee');
   const feeSplitEl = document.getElementById('order-fee-split');
   const fedFeeEl = document.getElementById('order-fed-fee');
+  const fedFeeRow = document.getElementById('order-fed-fee-row');
+  const feeLabelEl = document.getElementById('order-fee-label');
 
   if (notionalEl) notionalEl.textContent = formatCurrency(notional);
   if (marginEl) marginEl.textContent = formatCurrency(margin);
+
+  if (marginLabelEl) {
+    marginLabelEl.textContent = window.activeInstrumentType === 'stock' ? 'Required Cash (100%):' : 'Required Margin (10%):';
+  }
+
+  if (feeLabelEl) {
+    feeLabelEl.textContent = window.activeInstrumentType === 'stock' ? 'Exchange Fee ($0.05/Share):' : 'Exchange Fee ($0.50/Contract):';
+  }
+
+  if (fedFeeRow) {
+    fedFeeRow.style.display = window.activeInstrumentType === 'stock' ? 'none' : 'flex';
+  }
 
   const fedFee = 0; // Exit-only tax
   if (fedFeeEl) {
@@ -2835,8 +3784,9 @@ function updateOrderSummary() {
       feeEl.style.color = '#10b981'; // Green for free
       if (feeSplitEl) feeSplitEl.style.display = 'none';
     } else {
-      // CHARGED TIER ($0.50 flat fee per contract)
-      const fee = qty * 0.50;
+      // CHARGED TIER (Stock: $0.05 per share, Futures: $0.50 per contract)
+      const standardFeePerUnit = window.activeInstrumentType === 'stock' ? 0.05 : 0.50;
+      const fee = qty * standardFeePerUnit;
       feeEl.textContent = `$${fee.toLocaleString(undefined, { minimumFractionDigits: 2 })}`;
       feeEl.style.color = 'var(--accent-gold)'; // Gold for active fee
 
@@ -2846,21 +3796,30 @@ function updateOrderSummary() {
       const stateYield = fee * 0.33;
 
       if (feeSplitEl) {
-        feeSplitEl.style.display = 'flex';
-        document.getElementById('fee-split-mm').textContent = `↳ Rebate to MM (34%): $${mmRebate.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 3 })}`;
-        document.getElementById('fee-split-llc').textContent = `↳ Royalty to SGA LLC (33%): $${sgaLlc.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 3 })}`;
-        document.getElementById('fee-split-state').textContent = `↳ Sovereign Yield (33%): $${stateYield.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 3 })}`;
+        if (window.activeInstrumentType === 'stock') {
+          feeSplitEl.style.display = 'none';
+        } else {
+          feeSplitEl.style.display = 'flex';
+          document.getElementById('fee-split-mm').textContent = `↳ Rebate to MM (34%): $${mmRebate.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 3 })}`;
+          document.getElementById('fee-split-llc').textContent = `↳ Royalty to SGA LLC (33%): $${sgaLlc.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 3 })}`;
+          document.getElementById('fee-split-state').textContent = `↳ Sovereign Yield (33%): $${stateYield.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 3 })}`;
+        }
       }
     }
   }
 }
 
+
 function getMarkPrice(pos) {
-  if (currentTradingStateData && pos.stateId === currentTradingStateData.id) {
+  if (currentTradingStateData && pos.stateId === currentTradingStateData.id && pos.instrumentType === window.activeInstrumentType) {
     return currentLivePrice;
   }
   const sd = statesData.find(s => s.id === pos.stateId);
-  return sd ? parseFloat((calculateEOI(sd) * CONTRACT_SPECS.pricingScale).toFixed(2)) : pos.entryPrice;
+  if (!sd) return pos.entryPrice;
+  if (pos.instrumentType === 'stock') {
+    return window.getStockPrice(pos.stateId);
+  }
+  return parseFloat((calculateEOI(sd) * CONTRACT_SPECS.pricingScale).toFixed(2));
 }
 
 function renderPositions() {
@@ -2878,24 +3837,79 @@ function renderPositions() {
   }
   let totalPnl = 0;
   let totalMargin = 0;
+  let totalEntryNotional = 0;
   tbody.innerHTML = positions.map(pos => {
+    const specs = getInstrumentSpecs(pos.instrumentType);
     const markPrice = getMarkPrice(pos);
     const priceDiff = pos.side === 'LONG' ? (markPrice - pos.entryPrice) : (pos.entryPrice - markPrice);
-    const pnlTicks = Math.round(priceDiff / CONTRACT_SPECS.tickSize);
-    const pnl = pnlTicks * CONTRACT_SPECS.tickValue * pos.qty;
-    const margin = pos.entryPrice * CONTRACT_SPECS.multiplier * pos.qty * CONTRACT_SPECS.initialMarginPct;
+    const pnl = pos.instrumentType === 'stock'
+      ? priceDiff * pos.qty
+      : Math.round(priceDiff / specs.tickSize) * specs.tickValue * pos.qty;
+    const margin = pos.entryPrice * specs.multiplier * pos.qty * specs.initialMarginPct;
     totalPnl += pnl;
     totalMargin += margin;
+    if (!pos.isIPOPosition) {
+      totalEntryNotional += pos.entryPrice * specs.multiplier * pos.qty;
+    }
     const pnlColor = pnl >= 0 ? '#10b981' : '#ef4444';
     const sideColor = pos.side === 'LONG' ? '#10b981' : '#ef4444';
+    const instrumentColor = 'var(--accent-blue)';
+
+    // ── IPO pre-allocated positions (State / Fed) ──
+    if (pos.isIPOPosition) {
+      const pctReturn = ((markPrice - pos.entryPrice) / pos.entryPrice * 100);
+      const pctStr = (pctReturn >= 0 ? '+' : '') + pctReturn.toLocaleString(undefined, { maximumFractionDigits: 0 }) + '%';
+      const partyColor = pos.ipoParty === 'FED' ? '#38bdf8' : '#f59e0b';
+      const partyIcon = pos.ipoParty === 'FED' ? '🏛️' : '🏛️';
+      const qtyLabel = pos.qty >= 1e9 ? `${(pos.qty / 1e9).toFixed(0)}B sh.` : pos.qty.toLocaleString();
+      const markStr = markPrice < 1 ? `$${markPrice.toFixed(4)}` : `$${markPrice.toFixed(2)}`;
+      return `
+        <tr style="background: rgba(${pos.ipoParty === 'FED' ? '56,189,248' : '245,158,11'},0.04); border-left: 2px solid ${partyColor}44;">
+          <td style="font-weight: 600;">
+            ${partyIcon} ${pos.label}
+            <span style="font-size: 0.55rem; padding: 1px 4px; border-radius: 3px; background: ${partyColor}22; border: 1px solid ${partyColor}44; color: ${partyColor}; font-weight: bold; margin-left: 4px;">PRE-IPO</span>
+          </td>
+          <td><span style="color: #10b981; font-weight: 700;">LONG</span></td>
+          <td style="font-family:monospace; font-size:0.7rem;">${qtyLabel}</td>
+          <td style="font-family: monospace;">$0.0010</td>
+          <td style="font-family: monospace; color:${partyColor};">${markStr}</td>
+          <td style="color: ${pnlColor}; font-weight: 700; font-family: monospace;">
+            <span style="color:${pnlColor};">${pctStr}</span>
+          </td>
+          <td style="color: var(--text-secondary); font-size:0.65rem;">Gov. Equity</td>
+          <td><span style="font-size:0.6rem; color:rgba(255,255,255,0.25);">Locked</span></td>
+        </tr>
+      `;
+    }
+
+    // ── Regular user positions ──
+    const instrumentLabel = pos.instrumentType === 'stock' ? 'Shares' : 'Futures';
+    const rawPct = pos.side === 'LONG' ? ((markPrice - pos.entryPrice) / pos.entryPrice) : ((pos.entryPrice - markPrice) / pos.entryPrice);
+    const pctReturn = rawPct * 100;
+    const pctStr = (pctReturn >= 0 ? '+' : '') + pctReturn.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + '%';
+
+    const entryDecimals = (pos.instrumentType === 'stock' && pos.entryPrice < 1.00) ? 4 : 2;
+    const markDecimals = (pos.instrumentType === 'stock' && markPrice < 1.00) ? 4 : 2;
+
+    const entryPriceStr = pos.entryPrice.toLocaleString(undefined, { minimumFractionDigits: entryDecimals, maximumFractionDigits: entryDecimals });
+    const markPriceStr = markPrice.toLocaleString(undefined, { minimumFractionDigits: markDecimals, maximumFractionDigits: markDecimals });
+
     return `
       <tr>
-        <td style="font-weight: 600;">${pos.stateName}-SGA</td>
+        <td style="font-weight: 600;">
+          ${pos.stateName}-SGA
+          <span style="font-size: 0.6rem; padding: 1px 4px; border-radius: 3px; background: ${instrumentColor}22; border: 1px solid ${instrumentColor}44; color: ${instrumentColor}; font-weight: bold; margin-left: 4px;">
+            ${instrumentLabel}
+          </span>
+        </td>
         <td><span style="color: ${sideColor}; font-weight: 700;">${pos.side}</span></td>
         <td>${pos.qty.toLocaleString()}</td>
-        <td style="font-family: monospace;">$${pos.entryPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-        <td style="font-family: monospace;">$${markPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-        <td style="color: ${pnlColor}; font-weight: 700; font-family: monospace;">${pnl >= 0 ? '+' : ''}$${pnl.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+        <td style="font-family: monospace;">$${entryPriceStr}</td>
+        <td style="font-family: monospace;">$${markPriceStr}</td>
+        <td style="color: ${pnlColor}; font-weight: 700; font-family: monospace; line-height: 1.25;">
+          <div>${pnl >= 0 ? '+' : ''}$${pnl.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+          <div style="font-size: 0.65rem; font-weight: 600; opacity: 0.85; margin-top: 1px;">${pctStr}</div>
+        </td>
         <td style="color: var(--text-secondary); font-family: monospace;">${formatCurrency(margin)}</td>
         <td><button class="close-pos-btn" onmousedown="closePosition(${pos.id})" title="Close position">✕</button></td>
       </tr>
@@ -2903,7 +3917,13 @@ function renderPositions() {
   }).join('');
   if (countEl) countEl.textContent = String(positions.length);
   if (totalPnlEl) {
-    totalPnlEl.textContent = `${totalPnl >= 0 ? '+' : ''}$${totalPnl.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    let totalPnlStr = `${totalPnl >= 0 ? '+' : ''}$${totalPnl.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    if (totalEntryNotional > 0) {
+      const totalPnlPct = (totalPnl / totalEntryNotional) * 100;
+      const formattedTotalPnlPct = totalPnlPct.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+      totalPnlStr += ` (${totalPnlPct >= 0 ? '+' : ''}${formattedTotalPnlPct}%)`;
+    }
+    totalPnlEl.textContent = totalPnlStr;
     totalPnlEl.style.color = totalPnl >= 0 ? '#10b981' : '#ef4444';
   }
   if (totalMarginEl) {
@@ -2912,28 +3932,31 @@ function renderPositions() {
   }
 }
 
-window.calculateTradeFeeAndRecord = (party, stateId, side, qty, price, isClosing, realizedPnl) => {
-  const multiplier = CONTRACT_SPECS.multiplier;
+
+window.calculateTradeFeeAndRecord = (party, stateId, side, qty, price, isClosing, realizedPnl, instrumentType = 'futures') => {
+  const specs = getInstrumentSpecs(instrumentType);
+  const multiplier = specs.multiplier;
   const notional = qty * price * multiplier;
 
   let lossRebate = 0;
   let isLossMitigated = false;
 
-  // Standard flat fee calculation: $0.50 per contract if notional >= $25k, else $0.00
-  let standardFee = notional >= 25000 ? qty * 0.50 : 0;
+  // Standard flat fee calculation: $0.50 per contract or $0.05 per share if notional >= $25k, else $0.00
+  let standardFeePerUnit = multiplier === 1 ? 0.05 : 0.50;
+  let standardFee = notional >= 25000 ? qty * standardFeePerUnit : 0;
   let finalFee = standardFee;
 
-  // Apply 90% Loss-Mitigation Fee Rebate (slashed to $0.05 per contract) if user closes at a loss
-  if (party === 'USER' && isClosing && realizedPnl < 0 && standardFee > 0) {
+  // Apply 90% Loss-Mitigation Fee Rebate if user closes futures at a loss (slashed to $0.05/contract)
+  if (instrumentType !== 'stock' && party === 'USER' && isClosing && realizedPnl < 0 && standardFee > 0) {
     finalFee = qty * 0.05;
     lossRebate = standardFee - finalFee;
     isLossMitigated = true;
   }
 
   // Calculate Federal Fee (0.25% notional floor with 10% profit cap)
-  // Earning less than $1,000 in profit pays no Fed Fee
+  // Earning less than $1,000 in profit pays no Fed Fee (futures only)
   let federalFee = 0;
-  if (isClosing && realizedPnl >= 1000) {
+  if (instrumentType !== 'stock' && isClosing && realizedPnl >= 1000) {
     const notionalFee = notional * 0.0025; // 0.25% notional floor
     const profitCapFee = realizedPnl * 0.10; // 10% profit cap
     federalFee = Math.min(notionalFee, profitCapFee);
@@ -2969,8 +3992,8 @@ window.calculateTradeFeeAndRecord = (party, stateId, side, qty, price, isClosing
     // If this is the currently selected state, update its details panel in real-time
     if (currentTradingStateData && state.id === currentTradingStateData.id) {
       const eoi = calculateEOI(state);
-      const price = (eoi * CONTRACT_SPECS.pricingScale).toFixed(2);
-      const formattedPrice = parseFloat(price).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      const pr = (eoi * specs.pricingScale).toFixed(2);
+      const formattedPrice = parseFloat(pr).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
       const eoiValEl = document.getElementById('eoi-value');
       const priceEl = document.getElementById('contract-price');
@@ -2986,7 +4009,7 @@ window.calculateTradeFeeAndRecord = (party, stateId, side, qty, price, isClosing
 
       // Update Payout Simulation details based on new national proportions
       const stateProportion = eoi / totalNationalEOI;
-      const stateInjectionAmount = 1_000_000_000_000 * stateProportion;
+      const stateInjectionAmount = 50_000_000_000_000 * stateProportion;
       const split = getPayoutSplit(stateInjectionAmount);
 
       const vol24hEl = document.getElementById('market-24h-vol');
@@ -3029,8 +4052,10 @@ window.calculateTradeFeeAndRecord = (party, stateId, side, qty, price, isClosing
     lossRebate: lossRebate,
     isLossMitigated: isLossMitigated,
     realizedPnl: realizedPnl,
-    isClosing: isClosing
+    isClosing: isClosing,
+    instrumentType: instrumentType
   };
+
 
   window.allTransactions.unshift(tx); // Newest first
 
@@ -3109,22 +4134,34 @@ function renderTransactions() {
     } else {
       exFeeText = `$${exchangeFee.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
       if (tx.isLossMitigated) {
-        exFeeText += ` <span style="font-size: 0.55rem; color: #ef4444; border: 1px solid rgba(239,68,68,0.2); background: rgba(239,68,68,0.05); padding: 0.05rem 0.2rem; border-radius: 2px; font-weight: bold; margin-left: 2px;">Loss Rebate -50%</span>`;
+        exFeeText += ` <span style="font-size: 0.55rem; color: #ef4444; border: 1px solid rgba(239,68,68,0.2); background: rgba(239,68,68,0.05); padding: 0.05rem 0.2rem; border-radius: 2px; font-weight: bold; margin-left: 2px;">Loss Rebate -90%</span>`;
       }
     }
 
-    const feeStr = `<div style="display: flex; flex-direction: column; font-size: 0.68rem; gap: 0.1rem; line-height: 1.25; text-align: left;">
-      <span style="color: var(--accent-gold); font-weight: bold; font-family: monospace;">Total: $${totalFee.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-      <span style="color: var(--text-secondary); font-size: 0.58rem; font-family: monospace;">Exch: ${exFeeText} | Fed: $${fedFee.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-    </div>`;
+    const feeStr = tx.instrumentType === 'stock'
+      ? `<div style="display: flex; flex-direction: column; font-size: 0.68rem; gap: 0.1rem; line-height: 1.25; text-align: left;">
+          <span style="color: var(--accent-gold); font-weight: bold; font-family: monospace;">Total: $${exchangeFee.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+        </div>`
+      : `<div style="display: flex; flex-direction: column; font-size: 0.68rem; gap: 0.1rem; line-height: 1.25; text-align: left;">
+          <span style="color: var(--accent-gold); font-weight: bold; font-family: monospace;">Total: $${totalFee.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+          <span style="color: var(--text-secondary); font-size: 0.58rem; font-family: monospace;">Exch: ${exFeeText} | Fed: $${fedFee.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+        </div>`;
 
     const partyColor = tx.party === 'USER' ? 'var(--accent-gold)' : 'rgba(255,255,255,0.4)';
     const partyLabel = tx.party === 'USER' ? 'YOU' : 'INST';
 
+    const instrumentLabel = tx.instrumentType === 'stock' ? 'Stock' : 'Futures';
+    const instrumentColor = 'var(--accent-blue)';
+
     return `
       <tr style="border-bottom: 1px solid rgba(255,255,255,0.01);">
         <td style="color: var(--text-secondary); font-family: monospace; font-size: 0.7rem;">${formattedTime}</td>
-        <td style="font-weight: 600;">${tx.stateId}-SGA</td>
+        <td style="font-weight: 600;">
+          ${tx.stateId}-SGA
+          <span style="font-size: 0.55rem; padding: 1px 3px; border-radius: 2px; background: ${instrumentColor}22; border: 1px solid ${instrumentColor}44; color: ${instrumentColor}; font-weight: bold; margin-left: 2px;">
+            ${instrumentLabel}
+          </span>
+        </td>
         <td><span style="color: ${partyColor}; font-weight: bold; padding: 1px 4px; background: rgba(255,255,255,0.05); border-radius: 2px; font-size: 0.6rem;">${partyLabel}</span></td>
         <td><span style="color: ${sideColor}; font-weight: 700;">${tx.side}</span></td>
         <td>${tx.qty.toLocaleString()}</td>
@@ -3220,7 +4257,7 @@ function renderTradeHistory() {
     const formattedTime = formatTime(t.timestamp);
     const sideColor = t.side === 'LONG' ? '#10b981' : '#ef4444';
     const pnlColor = t.realizedPnl >= 0 ? '#10b981' : '#ef4444';
-    const romPct = (t.returnOnMargin * 100).toFixed(1);
+    const romPct = (t.returnOnMargin * 100).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
     const romColor = t.returnOnMargin >= 0 ? '#10b981' : '#ef4444';
 
     // Determine Fed Fee bracket label
@@ -3237,10 +4274,18 @@ function renderTradeHistory() {
       }
     }
 
+    const instrumentLabel = t.instrumentType === 'stock' ? 'Stock' : 'Futures';
+    const instrumentColor = 'var(--accent-blue)';
+
     return `
       <tr style="border-bottom: 1px solid rgba(255,255,255,0.02);">
         <td style="color: var(--text-secondary); font-family: monospace; font-size: 0.7rem; padding: 0.5rem 0.75rem;">${formattedTime}</td>
-        <td style="font-weight: 600; padding: 0.5rem 0.75rem;">${t.stateId}-SGA</td>
+        <td style="font-weight: 600; padding: 0.5rem 0.75rem;">
+          ${t.stateId}-SGA
+          <span style="font-size: 0.55rem; padding: 1px 3px; border-radius: 2px; background: ${instrumentColor}22; border: 1px solid ${instrumentColor}44; color: ${instrumentColor}; font-weight: bold; margin-left: 2px;">
+            ${instrumentLabel}
+          </span>
+        </td>
         <td style="padding: 0.5rem 0.75rem;"><span style="color: ${sideColor}; font-weight: 700;">${t.side}</span></td>
         <td style="padding: 0.5rem 0.75rem;">${t.qty.toLocaleString()}</td>
         <td style="font-family: monospace; padding: 0.5rem 0.75rem;">$${t.entryPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
@@ -3249,11 +4294,16 @@ function renderTradeHistory() {
         <td style="color: ${pnlColor}; font-weight: 700; font-family: monospace; padding: 0.5rem 0.75rem;">${t.realizedPnl >= 0 ? '+' : ''}$${t.realizedPnl.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
         <td style="color: ${romColor}; font-weight: 600; font-family: monospace; padding: 0.5rem 0.75rem;">${romPct}%</td>
         <td style="padding: 0.5rem 0.75rem;">
-          <div style="display: flex; flex-direction: column; font-size: 0.65rem; gap: 0.1rem; line-height: 1.2;">
-            <span style="color: var(--accent-gold); font-weight: bold; font-family: monospace;">$${t.totalFee.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-            <span style="color: var(--text-secondary); font-size: 0.55rem; font-family: monospace;">Ex: $${t.exchangeFee.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} | Fed: $${t.fedFee.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-            ${bracketLabel}
-          </div>
+          ${t.instrumentType === 'stock'
+            ? `<div style="display: flex; flex-direction: column; font-size: 0.65rem; gap: 0.1rem; line-height: 1.2;">
+                <span style="color: var(--accent-gold); font-weight: bold; font-family: monospace;">$${t.exchangeFee.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              </div>`
+            : `<div style="display: flex; flex-direction: column; font-size: 0.65rem; gap: 0.1rem; line-height: 1.2;">
+                <span style="color: var(--accent-gold); font-weight: bold; font-family: monospace;">$${t.totalFee.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                <span style="color: var(--text-secondary); font-size: 0.55rem; font-family: monospace;">Ex: $${t.exchangeFee.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} | Fed: $${t.fedFee.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                ${bracketLabel}
+              </div>`
+          }
         </td>
       </tr>
     `;
@@ -3336,6 +4386,14 @@ window.executeTrade = (type) => {
     showTradeNotification('Order quantity exceeds maximum limit of 10,000,000 contracts.', 'error');
     return;
   }
+  
+  const specs = getActiveSpecs();
+  let tickSize = specs.tickSize;
+  let tickValue = specs.tickValue;
+  if (window.activeInstrumentType === 'stock' && currentLivePrice < 1.00) {
+    tickSize = 0.0001;
+    tickValue = 0.0001;
+  }
   let fillPrice;
   let slippage = 0;
 
@@ -3350,7 +4408,7 @@ window.executeTrade = (type) => {
       for (let ask of orderBook.asks) {
         if (remaining <= 0) break;
         const fill = Math.min(remaining, ask.size);
-        totalNotional += fill * ask.price * CONTRACT_SPECS.multiplier;
+        totalNotional += fill * ask.price * specs.multiplier;
         ask.size -= fill;
         remaining -= fill;
         currentLivePrice = ask.price; // sweep physically impacts price
@@ -3359,12 +4417,12 @@ window.executeTrade = (type) => {
       // If we completely exhaust LOB asks, fill remaining size with high-slippage penalty
       if (remaining > 0) {
         const lastAskPrice = orderBook.asks[orderBook.asks.length - 1]?.price || currentLivePrice;
-        const penaltyPrice = lastAskPrice + CONTRACT_SPECS.tickSize * 2;
-        totalNotional += remaining * penaltyPrice * CONTRACT_SPECS.multiplier;
+        const penaltyPrice = lastAskPrice + tickSize * 2;
+        totalNotional += remaining * penaltyPrice * specs.multiplier;
         currentLivePrice = penaltyPrice;
       }
 
-      fillPrice = totalNotional / (qty * CONTRACT_SPECS.multiplier);
+      fillPrice = totalNotional / (qty * specs.multiplier);
       slippage = fillPrice - originalBestPrice;
 
       // Synchronize continuous price and inject massive positive imbalance for buyer impact
@@ -3386,7 +4444,7 @@ window.executeTrade = (type) => {
       for (let bid of orderBook.bids) {
         if (remaining <= 0) break;
         const fill = Math.min(remaining, bid.size);
-        totalNotional += fill * bid.price * CONTRACT_SPECS.multiplier;
+        totalNotional += fill * bid.price * specs.multiplier;
         bid.size -= fill;
         remaining -= fill;
         currentLivePrice = bid.price; // sweep physically impacts price
@@ -3394,12 +4452,12 @@ window.executeTrade = (type) => {
 
       if (remaining > 0) {
         const lastBidPrice = orderBook.bids[orderBook.bids.length - 1]?.price || currentLivePrice;
-        const penaltyPrice = lastBidPrice - CONTRACT_SPECS.tickSize * 2;
-        totalNotional += remaining * penaltyPrice * CONTRACT_SPECS.multiplier;
+        const penaltyPrice = lastBidPrice - tickSize * 2;
+        totalNotional += remaining * penaltyPrice * specs.multiplier;
         currentLivePrice = penaltyPrice;
       }
 
-      fillPrice = totalNotional / (qty * CONTRACT_SPECS.multiplier);
+      fillPrice = totalNotional / (qty * specs.multiplier);
       slippage = originalBestPrice - fillPrice;
 
       // Synchronize continuous price and inject massive negative imbalance for seller impact
@@ -3415,8 +4473,10 @@ window.executeTrade = (type) => {
       });
     }
 
-    fillPrice = parseFloat(fillPrice.toFixed(2));
-    currentLivePrice = parseFloat(currentLivePrice.toFixed(2));
+    const fillDecimals = (window.activeInstrumentType === 'stock' && fillPrice < 1.00) ? 4 : 2;
+    const liveDecimals = (window.activeInstrumentType === 'stock' && currentLivePrice < 1.00) ? 4 : 2;
+    fillPrice = parseFloat(fillPrice.toFixed(fillDecimals));
+    currentLivePrice = parseFloat(currentLivePrice.toFixed(liveDecimals));
     slippage = Math.max(0, parseFloat(slippage.toFixed(2)));
 
     // Instantly replenish and redraw the book reflecting user's market sweep
@@ -3429,60 +4489,69 @@ window.executeTrade = (type) => {
       showTradeNotification('Enter a valid limit/stop price.', 'error');
       return;
     }
-    fillPrice = Math.round(limitVal / CONTRACT_SPECS.tickSize) * CONTRACT_SPECS.tickSize;
-    fillPrice = parseFloat(fillPrice.toFixed(2));
+    fillPrice = Math.round(limitVal / tickSize) * tickSize;
+    const fillDecimals = (window.activeInstrumentType === 'stock' && fillPrice < 1.00) ? 4 : 2;
+    fillPrice = parseFloat(fillPrice.toFixed(fillDecimals));
   }
 
   const side = type === 'buy' ? 'LONG' : 'SHORT';
-  const notional = fillPrice * CONTRACT_SPECS.multiplier * qty;
-  const margin = notional * CONTRACT_SPECS.initialMarginPct;
+  const notional = fillPrice * specs.multiplier * qty;
+  const margin = notional * specs.initialMarginPct;
+  const unitName = window.activeInstrumentType === 'stock' ? 'shares' : 'contracts';
+  const marginLabel = window.activeInstrumentType === 'stock' ? 'Cash' : 'Margin';
 
-  // Check for existing same-side position
-  const existingIdx = positions.findIndex(p => p.stateId === currentTradingStateData.id && p.side === side);
+  // Check for existing same-side position (excluding locked pre-IPO positions)
+  const existingIdx = positions.findIndex(p => p.stateId === currentTradingStateData.id && p.side === side && p.instrumentType === window.activeInstrumentType && !p.isIPOPosition);
   if (existingIdx >= 0) {
     const existing = positions[existingIdx];
     const totalQty = existing.qty + qty;
     const avgPrice = ((existing.entryPrice * existing.qty) + (fillPrice * qty)) / totalQty;
     existing.qty = totalQty;
-    existing.entryPrice = parseFloat(avgPrice.toFixed(2));
+    const avgDecimals = (window.activeInstrumentType === 'stock' && avgPrice < 1.00) ? 4 : 2;
+    existing.entryPrice = parseFloat(avgPrice.toFixed(avgDecimals));
 
-    let msg = `Averaged ${side} ${currentTradingStateData.id}-SGA: +${qty.toLocaleString()} @ $${fillPrice.toFixed(2)} → ${totalQty.toLocaleString()} contracts @ $${existing.entryPrice.toFixed(2)} avg`;
+    const fillPriceStr = fillPrice < 1.00 ? fillPrice.toFixed(4) : fillPrice.toFixed(2);
+    const avgPriceStr = existing.entryPrice < 1.00 ? existing.entryPrice.toFixed(4) : existing.entryPrice.toFixed(2);
+    let msg = `Averaged ${side} ${currentTradingStateData.id}-SGA: +${qty.toLocaleString()} @ $${fillPriceStr} → ${totalQty.toLocaleString()} ${unitName} @ $${avgPriceStr} avg`;
     if (orderType === 'market' && slippage > 0) msg += ` (Slippage: $${slippage.toFixed(2)})`;
 
     showTradeNotification(msg, type === 'buy' ? 'buy' : 'sell');
-    window.calculateTradeFeeAndRecord('USER', currentTradingStateData.id, type.toUpperCase(), qty, fillPrice, false, 0);
+    window.calculateTradeFeeAndRecord('USER', currentTradingStateData.id, type.toUpperCase(), qty, fillPrice, false, 0, window.activeInstrumentType);
   } else {
-    // Check for opposite position
-    const oppositeIdx = positions.findIndex(p => p.stateId === currentTradingStateData.id && p.side !== side);
+    // Check for opposite position (excluding locked pre-IPO positions)
+    const oppositeIdx = positions.findIndex(p => p.stateId === currentTradingStateData.id && p.side !== side && p.instrumentType === window.activeInstrumentType && !p.isIPOPosition);
     if (oppositeIdx >= 0) {
       const opposite = positions[oppositeIdx];
       if (qty >= opposite.qty) {
         const closedQty = opposite.qty;
         const priceDiff = opposite.side === 'LONG' ? (fillPrice - opposite.entryPrice) : (opposite.entryPrice - fillPrice);
-        const realizedPnl = Math.round(priceDiff / CONTRACT_SPECS.tickSize) * CONTRACT_SPECS.tickValue * closedQty;
+        const realizedPnl = window.activeInstrumentType === 'stock'
+          ? priceDiff * closedQty
+          : Math.round(priceDiff / tickSize) * tickValue * closedQty;
         positions.splice(oppositeIdx, 1);
         const remainingQty = qty - closedQty;
 
-        let msg = `Closed ${closedQty.toLocaleString()} ${opposite.side} ${currentTradingStateData.id}-SGA @ $${fillPrice.toFixed(2)} | P&L: ${realizedPnl >= 0 ? '+' : ''}$${realizedPnl.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        const fillPriceStr = fillPrice < 1.00 ? fillPrice.toFixed(4) : fillPrice.toFixed(2);
+        let msg = `Closed ${closedQty.toLocaleString()} ${opposite.side} ${currentTradingStateData.id}-SGA @ $${fillPriceStr} | P&L: ${realizedPnl >= 0 ? '+' : ''}$${realizedPnl.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
         if (orderType === 'market' && slippage > 0) msg += ` (Slippage: $${slippage.toFixed(2)})`;
 
         // Fee notification
-        const closingNotional = fillPrice * CONTRACT_SPECS.multiplier * closedQty;
+        const closingNotional = fillPrice * specs.multiplier * closedQty;
         let closingFedFee = 0;
         if (realizedPnl >= 1000) {
           const notionalFee = closingNotional * 0.0025; // 0.25% notional floor
           const profitCapFee = realizedPnl * 0.10; // 10% profit cap
           closingFedFee = Math.min(notionalFee, profitCapFee);
         }
-        const standardClosingFee = closingNotional >= 25000 ? closedQty * 0.50 : 0;
+        const standardClosingFee = closingNotional >= 25000 ? closedQty * (specs.multiplier === 1 ? 0.05 : 0.50) : 0;
         let actualExchangeFee = standardClosingFee;
         if (standardClosingFee > 0 && realizedPnl < 0) {
-          actualExchangeFee = closedQty * 0.05;
+          actualExchangeFee = closedQty * (specs.multiplier === 1 ? 0.005 : 0.05);
         }
         const totalClosingFee = actualExchangeFee + closingFedFee;
         msg += ` | Fee: $${totalClosingFee.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (Exchange: $${actualExchangeFee.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} + Fed: $${closingFedFee.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`;
 
-        window.calculateTradeFeeAndRecord('USER', currentTradingStateData.id, type.toUpperCase(), closedQty, fillPrice, true, realizedPnl);
+        window.calculateTradeFeeAndRecord('USER', currentTradingStateData.id, type.toUpperCase(), closedQty, fillPrice, true, realizedPnl, window.activeInstrumentType);
 
         // Record to Trade History
         window.userTradeHistory.unshift({
@@ -3497,41 +4566,45 @@ window.executeTrade = (type) => {
           exchangeFee: actualExchangeFee,
           fedFee: closingFedFee,
           totalFee: totalClosingFee,
-          returnOnMargin: realizedPnl / (closingNotional * 0.10)
+          returnOnMargin: realizedPnl / (closingNotional * specs.initialMarginPct),
+          instrumentType: window.activeInstrumentType
         });
         renderTradeHistory();
 
         if (remainingQty > 0) {
-          positions.push({ id: positionIdCounter++, stateId: currentTradingStateData.id, stateName: currentTradingStateData.id, side, qty: remainingQty, entryPrice: fillPrice, timestamp: Date.now() });
+          positions.push({ id: positionIdCounter++, stateId: currentTradingStateData.id, stateName: currentTradingStateData.id, side, qty: remainingQty, entryPrice: fillPrice, timestamp: Date.now(), instrumentType: window.activeInstrumentType });
           msg += ` | Opened ${side} ${remainingQty.toLocaleString()} @ $${fillPrice.toFixed(2)}`;
-          window.calculateTradeFeeAndRecord('USER', currentTradingStateData.id, type.toUpperCase(), remainingQty, fillPrice, false, 0);
+          window.calculateTradeFeeAndRecord('USER', currentTradingStateData.id, type.toUpperCase(), remainingQty, fillPrice, false, 0, window.activeInstrumentType);
         }
         showTradeNotification(msg, realizedPnl >= 0 ? 'buy' : 'sell');
       } else {
         const priceDiff = opposite.side === 'LONG' ? (fillPrice - opposite.entryPrice) : (opposite.entryPrice - fillPrice);
-        const realizedPnl = Math.round(priceDiff / CONTRACT_SPECS.tickSize) * CONTRACT_SPECS.tickValue * qty;
+        const realizedPnl = window.activeInstrumentType === 'stock'
+          ? priceDiff * qty
+          : Math.round(priceDiff / tickSize) * tickValue * qty;
         opposite.qty -= qty;
 
-        let msg = `Reduced ${opposite.side} ${currentTradingStateData.id}-SGA by ${qty.toLocaleString()} @ $${fillPrice.toFixed(2)} | P&L: ${realizedPnl >= 0 ? '+' : ''}$${realizedPnl.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        const fillPriceStr = fillPrice < 1.00 ? fillPrice.toFixed(4) : fillPrice.toFixed(2);
+        let msg = `Reduced ${opposite.side} ${currentTradingStateData.id}-SGA by ${qty.toLocaleString()} @ $${fillPriceStr} | P&L: ${realizedPnl >= 0 ? '+' : ''}$${realizedPnl.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
         if (orderType === 'market' && slippage > 0) msg += ` (Slippage: $${slippage.toFixed(2)})`;
 
         // Fee notification
-        const closingNotional = fillPrice * CONTRACT_SPECS.multiplier * qty;
+        const closingNotional = fillPrice * specs.multiplier * qty;
         let closingFedFee = 0;
         if (realizedPnl >= 1000) {
           const notionalFee = closingNotional * 0.0025; // 0.25% notional floor
           const profitCapFee = realizedPnl * 0.10; // 10% profit cap
           closingFedFee = Math.min(notionalFee, profitCapFee);
         }
-        const standardClosingFee = closingNotional >= 25000 ? qty * 0.50 : 0;
+        const standardClosingFee = closingNotional >= 25000 ? qty * (specs.multiplier === 1 ? 0.05 : 0.50) : 0;
         let actualExchangeFee = standardClosingFee;
         if (standardClosingFee > 0 && realizedPnl < 0) {
-          actualExchangeFee = qty * 0.05;
+          actualExchangeFee = qty * (specs.multiplier === 1 ? 0.005 : 0.05);
         }
         const totalClosingFee = actualExchangeFee + closingFedFee;
         msg += ` | Fee: $${totalClosingFee.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (Exchange: $${actualExchangeFee.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} + Fed: $${closingFedFee.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`;
 
-        window.calculateTradeFeeAndRecord('USER', currentTradingStateData.id, type.toUpperCase(), qty, fillPrice, true, realizedPnl);
+        window.calculateTradeFeeAndRecord('USER', currentTradingStateData.id, type.toUpperCase(), qty, fillPrice, true, realizedPnl, window.activeInstrumentType);
 
         // Record to Trade History
         window.userTradeHistory.unshift({
@@ -3546,29 +4619,31 @@ window.executeTrade = (type) => {
           exchangeFee: actualExchangeFee,
           fedFee: closingFedFee,
           totalFee: totalClosingFee,
-          returnOnMargin: realizedPnl / (closingNotional * 0.10)
+          returnOnMargin: realizedPnl / (closingNotional * specs.initialMarginPct),
+          instrumentType: window.activeInstrumentType
         });
         renderTradeHistory();
 
         showTradeNotification(msg, realizedPnl >= 0 ? 'buy' : 'sell');
       }
     } else {
-      positions.push({ id: positionIdCounter++, stateId: currentTradingStateData.id, stateName: currentTradingStateData.id, side, qty, entryPrice: fillPrice, timestamp: Date.now() });
+      positions.push({ id: positionIdCounter++, stateId: currentTradingStateData.id, stateName: currentTradingStateData.id, side, qty, entryPrice: fillPrice, timestamp: Date.now(), instrumentType: window.activeInstrumentType });
 
-      const fee = notional >= 25000 ? qty * 0.50 : 0;
+      const fee = notional >= 25000 ? qty * (specs.multiplier === 1 ? 0.05 : 0.50) : 0;
       const fedFee = 0; // Exit-only win tax
       const totalFee = fee + fedFee;
-      let msg = `${orderType.toUpperCase()} FILL: ${side} ${qty.toLocaleString()} ${currentTradingStateData.id}-SGA @ $${fillPrice.toFixed(2)} | Margin: ${formatCurrency(margin)}`;
+      let msg = `${orderType.toUpperCase()} FILL: ${side} ${qty.toLocaleString()} ${currentTradingStateData.id}-SGA @ $${fillPrice.toFixed(2)} | ${marginLabel}: ${formatCurrency(margin)}`;
       if (orderType === 'market' && slippage > 0) msg += ` (Slippage: $${slippage.toFixed(2)})`;
       msg += ` | Fee: $${totalFee.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (Exchange: $${fee.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} + Fed: $${fedFee.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`;
 
-      window.calculateTradeFeeAndRecord('USER', currentTradingStateData.id, type.toUpperCase(), qty, fillPrice, false, 0);
+      window.calculateTradeFeeAndRecord('USER', currentTradingStateData.id, type.toUpperCase(), qty, fillPrice, false, 0, window.activeInstrumentType);
 
       showTradeNotification(msg, type === 'buy' ? 'buy' : 'sell');
     }
   }
   renderPositions();
 };
+
 
 window.adjustQty = (delta) => {
   const input = document.getElementById('order-qty');
@@ -3582,25 +4657,26 @@ window.closePosition = (posId) => {
   const idx = positions.findIndex(p => p.id === posId);
   if (idx < 0) return;
   const pos = positions[idx];
+  const specs = getInstrumentSpecs(pos.instrumentType);
   const markPrice = getMarkPrice(pos);
   const priceDiff = pos.side === 'LONG' ? (markPrice - pos.entryPrice) : (pos.entryPrice - markPrice);
-  const pnlTicks = Math.round(priceDiff / CONTRACT_SPECS.tickSize);
-  const pnl = pnlTicks * CONTRACT_SPECS.tickValue * pos.qty;
+  const pnlTicks = Math.round(priceDiff / specs.tickSize);
+  const pnl = pnlTicks * specs.tickValue * pos.qty;
   positions.splice(idx, 1);
 
   const closingSide = pos.side === 'LONG' ? 'SELL' : 'BUY';
-  const closingNotional = markPrice * CONTRACT_SPECS.multiplier * pos.qty;
+  const closingNotional = markPrice * specs.multiplier * pos.qty;
   let closingFedFee = 0;
   if (pnl >= 1000) {
     const notionalFee = closingNotional * 0.0025; // 0.25% notional floor
     const profitCapFee = pnl * 0.10; // 10% profit cap
     closingFedFee = Math.min(notionalFee, profitCapFee);
   }
-  const standardClosingFee = closingNotional >= 25000 ? pos.qty * 0.50 : 0;
+  const standardClosingFee = closingNotional >= 25000 ? pos.qty * (specs.multiplier === 1 ? 0.05 : 0.50) : 0;
 
   let actualExchangeFee = standardClosingFee;
   if (standardClosingFee > 0 && pnl < 0) {
-    actualExchangeFee = pos.qty * 0.05;
+    actualExchangeFee = pos.qty * (specs.multiplier === 1 ? 0.005 : 0.05);
   }
   const totalClosingFee = actualExchangeFee + closingFedFee;
 
@@ -3608,7 +4684,7 @@ window.closePosition = (posId) => {
 
   showTradeNotification(msg, pnl >= 0 ? 'buy' : 'sell');
 
-  window.calculateTradeFeeAndRecord('USER', pos.stateId, closingSide, pos.qty, markPrice, true, pnl);
+  window.calculateTradeFeeAndRecord('USER', pos.stateId, closingSide, pos.qty, markPrice, true, pnl, pos.instrumentType);
 
   // Record to Trade History
   window.userTradeHistory.unshift({
@@ -3623,7 +4699,8 @@ window.closePosition = (posId) => {
     exchangeFee: actualExchangeFee,
     fedFee: closingFedFee,
     totalFee: totalClosingFee,
-    returnOnMargin: pnl / (closingNotional * 0.10)
+    returnOnMargin: pnl / (closingNotional * specs.initialMarginPct),
+    instrumentType: pos.instrumentType
   });
   renderTradeHistory();
 
@@ -3682,6 +4759,34 @@ function createAllocationItemHTML(index, isRemovable = true) {
       <div class="form-group" style="margin-bottom: 0;">
         <label>DESCRIPTION</label>
         <textarea class="alloc-description" rows="3" required placeholder="Write a mandatory 1-2 sentence description. And a certain number of characters is required."></textarea>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-top: 0.5rem;">
+        <div class="form-group" style="margin-bottom: 0;">
+          <label>EXPENDITURE TYPE</label>
+          <select class="alloc-expenditure-type">
+            <option value="CapEx">CapEx — Capital Expenditure</option>
+            <option value="OpEx">OpEx — Operating Expenditure</option>
+          </select>
+        </div>
+        <div class="form-group" style="margin-bottom: 0;">
+          <label>HAS TIMELINE?</label>
+          <select class="alloc-has-timeline">
+            <option value="no">No Timeline</option>
+            <option value="yes">Yes — Set Dates</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="alloc-timeline-dates" style="display: none; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-top: 0.4rem;">
+        <div class="form-group" style="margin-bottom: 0;">
+          <label>START DATE</label>
+          <input type="date" class="alloc-start-date">
+        </div>
+        <div class="form-group" style="margin-bottom: 0;">
+          <label>PROJECTED END</label>
+          <input type="date" class="alloc-end-date">
+        </div>
       </div>
     </div>
   `;
@@ -3753,6 +4858,13 @@ function initLedgerUI() {
         reindexSplits();
       });
     }
+
+    // Timeline toggle show/hide
+    const timelineToggle = newRow.querySelector('.alloc-has-timeline');
+    const timelineDates = newRow.querySelector('.alloc-timeline-dates');
+    timelineToggle.addEventListener('change', () => {
+      timelineDates.style.display = timelineToggle.value === 'yes' ? 'grid' : 'none';
+    });
 
     updateRealTimeTotal();
   }
@@ -3865,12 +4977,19 @@ function initLedgerUI() {
       }
 
       totalAmount += amount;
+      const expenditureType = row.querySelector('.alloc-expenditure-type').value;
+      const hasTimeline = row.querySelector('.alloc-has-timeline').value === 'yes';
+      const startDate = hasTimeline ? row.querySelector('.alloc-start-date').value : null;
+      const endDate = hasTimeline ? row.querySelector('.alloc-end-date').value : null;
+
       allocations.push({
         amount,
         region,
         category,
         agency,
-        description
+        description,
+        expenditureType,
+        timeline: hasTimeline ? { startDate, endDate } : null
       });
     }
 
@@ -3894,22 +5013,18 @@ function initLedgerUI() {
       if (url) mediaItems.push({ url, type: detectMediaType(url) });
     });
 
-    // Collect audit report fields
-    const auditFirm = document.getElementById('audit-firm').value.trim();
-    const auditDate = document.getElementById('audit-date').value;
-    const auditStatus = document.getElementById('audit-status').value;
-    const auditReportUrl = document.getElementById('audit-report-url').value.trim();
-    const auditNotes = document.getElementById('audit-notes').value.trim();
-    const auditReport = (auditFirm || auditStatus || auditReportUrl)
-      ? { firm: auditFirm, date: auditDate, status: auditStatus, reportUrl: auditReportUrl, notes: auditNotes }
-      : null;
+    // Determine primary expenditure type for record-level badge
+    const primaryExpType = allocations.length === 1
+      ? allocations[0].expenditureType
+      : ([...new Set(allocations.map(a => a.expenditureType))].length === 1
+          ? allocations[0].expenditureType
+          : 'Mixed');
 
-    // Aggregate values for the main table search capability
-    let categorySummary = '';
-    let regionSummary = '';
-    let agencySummary = '';
-    let descriptionSummary = '';
+    // Determine if any split has a timeline
+    const hasAnyTimeline = allocations.some(a => a.timeline);
 
+    // Aggregate summary fields for table display
+    let categorySummary, regionSummary, agencySummary, descriptionSummary;
     if (allocations.length === 1) {
       categorySummary = allocations[0].category;
       regionSummary = allocations[0].region;
@@ -3918,13 +5033,10 @@ function initLedgerUI() {
     } else {
       const uniqueCats = [...new Set(allocations.map(a => a.category))];
       categorySummary = uniqueCats.length === 1 ? uniqueCats[0] : `Multiple (${uniqueCats.length})`;
-
       const uniqueRegs = [...new Set(allocations.map(a => a.region))];
       regionSummary = uniqueRegs.length === 1 ? uniqueRegs[0] : 'Multiple';
-
       const uniqueAgencies = [...new Set(allocations.map(a => a.agency))];
       agencySummary = uniqueAgencies.length === 1 ? uniqueAgencies[0] : `${uniqueAgencies.length} Agencies`;
-
       descriptionSummary = `Liquidated biweekly. Contains ${allocations.length} splits going to ${uniqueRegs.length} states. Click to view detailed breakdown.`;
     }
 
@@ -3934,12 +5046,18 @@ function initLedgerUI() {
       category: categorySummary,
       region: regionSummary,
       description: descriptionSummary,
-      allocations: allocations, // Embedded split allocations array
+      allocations,
+      expenditureType: primaryExpType,
+      hasTimeline: hasAnyTimeline,
       mediaItems: mediaItems.length > 0 ? mediaItems : null,
-      auditReport: auditReport
+      auditReport: null,
+      milestones: [],
+      contractorPayments: [],
+      changeOrders: [],
+      assetValuations: []
     });
 
-    // Reset dynamic splits workspace
+    // Reset splits workspace
     container.innerHTML = '';
     splitIndexCounter = 0;
     appendSplitRow(false);
@@ -3948,13 +5066,6 @@ function initLedgerUI() {
     // Reset media rows
     mediaContainer.innerHTML = '';
     mediaRowCounter = 0;
-
-    // Reset audit fields
-    document.getElementById('audit-firm').value = '';
-    document.getElementById('audit-date').value = '';
-    document.getElementById('audit-status').value = '';
-    document.getElementById('audit-report-url').value = '';
-    document.getElementById('audit-notes').value = '';
 
     submitBtn.disabled = false;
     submitBtn.textContent = 'Record to Ledger';
@@ -3971,21 +5082,22 @@ function initLedgerUI() {
     renderLedger();
   });
 
+
   // Filters setup
   const filters = ['filter-category', 'filter-region', 'filter-agency', 'filter-start', 'filter-end'];
   filters.forEach(id => {
     document.getElementById(id).addEventListener('input', renderLedger);
   });
 
-  // Click-to-copy Hash Anchor
+  // Click-to-copy ID Anchor
   document.getElementById('ledger-body').addEventListener('click', (e) => {
-    const cell = e.target.closest('.hash-cell');
+    const cell = e.target.closest('.id-cell');
     if (!cell) return;
 
-    const hash = cell.dataset.hash;
-    if (!hash) return;
+    const id = cell.dataset.id;
+    if (!id) return;
 
-    navigator.clipboard.writeText(hash).then(() => {
+    navigator.clipboard.writeText(id).then(() => {
       const originalText = cell.textContent;
       cell.textContent = 'Copied!';
       cell.classList.add('copied');
@@ -3995,75 +5107,47 @@ function initLedgerUI() {
         cell.classList.remove('copied');
       }, 1200);
     }).catch(err => {
-      console.error('Failed to copy hash: ', err);
+      console.error('Failed to copy ID: ', err);
     });
   });
 
-  // Click Description to Open Modal
+  // Click Description to Open Record Panel
   document.getElementById('ledger-body').addEventListener('click', (e) => {
     const cell = e.target.closest('.desc-cell');
     if (!cell) return;
-
-    const row = cell.closest('tr');
-    if (!row) return;
-
-    const hashCell = row.querySelector('.hash-cell');
-    if (!hashCell) return;
-    const hash = hashCell.dataset.hash;
-
-    const record = ledger.getRecords({}).find(r => r.hash === hash);
+    const id = cell.dataset.recordId;
+    if (!id) return;
+    const record = ledger.getRecords({}).find(r => r.id === id);
     if (!record) return;
-
-    openDetailModal(record);
+    openRecordPanel(record);
   });
 
-  // Close Modal Events
-  const modal = document.getElementById('detail-modal');
-  const closeBtn = document.getElementById('close-modal-btn');
+  // Close Record Panel
+  const overlay = document.getElementById('record-panel-overlay');
+  const closePanelBtn = document.getElementById('close-record-panel-btn');
+  const closePanel = () => overlay.classList.remove('active');
+  if (closePanelBtn) closePanelBtn.addEventListener('click', closePanel);
+  if (overlay) overlay.addEventListener('click', (e) => { if (e.target === overlay) closePanel(); });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && overlay && overlay.classList.contains('active')) closePanel();
+  });
 
-  if (modal && closeBtn) {
-    const closeModal = () => modal.classList.remove('active');
+  // Verify button removed
+  const verifyBtn = document.getElementById('verify-ledger-btn');
+  if (verifyBtn) {
+    verifyBtn.style.display = 'none';
+  }
 
-    closeBtn.addEventListener('click', closeModal);
-    modal.addEventListener('click', (e) => {
-      if (e.target === modal) closeModal();
-    });
-
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && modal.classList.contains('active')) {
-        closeModal();
+  // Reset Ledger
+  const resetBtn = document.getElementById('reset-ledger-btn');
+  if (resetBtn) {
+    resetBtn.addEventListener('click', async () => {
+      if (confirm('Are you sure you want to delete all entries? This will completely reset the ledger.')) {
+        await ledger.clearAll();
+        renderLedger();
       }
     });
   }
-
-  // Verify
-  const verifyBtn = document.getElementById('verify-ledger-btn');
-  verifyBtn.addEventListener('click', async () => {
-    verifyBtn.textContent = 'Verifying...';
-    const isValid = await ledger.verifyIntegrity();
-    if (isValid) {
-      verifyBtn.style.color = '#10b981';
-      verifyBtn.style.borderColor = '#10b981';
-      verifyBtn.textContent = 'Verified: Cryptographically Sound';
-    } else {
-      verifyBtn.style.color = '#ef4444';
-      verifyBtn.style.borderColor = '#ef4444';
-      verifyBtn.textContent = 'Warning: Tampering Detected!';
-    }
-    setTimeout(() => {
-      verifyBtn.style.color = '';
-      verifyBtn.style.borderColor = '';
-      verifyBtn.textContent = 'Verify Integrity';
-    }, 4000);
-  });
-
-  // Reset Ledger
-  document.getElementById('reset-ledger-btn').addEventListener('click', async () => {
-    if (confirm('Are you sure you want to delete all entries? This will completely reset the cryptographically secured ledger.')) {
-      await ledger.clearAll();
-      renderLedger();
-    }
-  });
 
   // Initial render
   renderLedger();
@@ -4083,7 +5167,7 @@ function renderLedger() {
   const records = ledger.getRecords(filters);
 
   if (records.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: var(--text-secondary);">No records found.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="9" style="text-align: center; color: var(--text-secondary);">No records found.</td></tr>`;
     return;
   }
 
@@ -4092,23 +5176,46 @@ function renderLedger() {
       month: 'short', day: 'numeric', year: 'numeric',
       hour: '2-digit', minute: '2-digit'
     });
+    const shortId = record.id.substring(0, 10) + '...';
 
-    const shortHash = record.hash.substring(0, 10) + '...';
+    // CapEx/OpEx badge
+    const expType = record.expenditureType || '';
+    const expBadge = expType === 'CapEx'
+      ? `<span class="ledger-badge ledger-badge-capex">CapEx</span>`
+      : expType === 'OpEx'
+        ? `<span class="ledger-badge ledger-badge-opex">OpEx</span>`
+        : expType === 'Mixed'
+          ? `<span class="ledger-badge ledger-badge-mixed">Mixed</span>`
+          : `<span style="color:var(--text-secondary);font-size:0.7rem;">—</span>`;
+
+    // Timeline indicator
+    const timelineIcon = record.hasTimeline ? `<span title="Has Timeline" style="font-size:0.7rem;margin-left:3px;opacity:0.7;">📅</span>` : '';
+
+    // Audit status pill
+    const ar = record.auditReport;
+    const auditColors = { Passed: '#10b981', Failed: '#ef4444', Qualified: '#f59e0b', Pending: '#38bdf8' };
+    const auditIcons = { Passed: '✓', Failed: '✗', Qualified: '⚠', Pending: '⏳' };
+    const auditCell = ar && ar.status
+      ? `<span style="background:${auditColors[ar.status]}22;color:${auditColors[ar.status]};border:1px solid ${auditColors[ar.status]}55;padding:0.15rem 0.45rem;border-radius:999px;font-size:0.65rem;font-weight:700;white-space:nowrap;">${auditIcons[ar.status]} ${ar.status}</span>`
+      : `<span style="color:var(--text-secondary);font-size:0.7rem;">—</span>`;
 
     return `
       <tr>
         <td style="font-size: 0.8rem; color: var(--text-secondary); white-space: nowrap;">${date}</td>
         <td style="font-weight: 600; text-align: center;">${record.region}</td>
         <td><span style="background: rgba(255,255,255,0.08); padding: 0.2rem 0.5rem; border-radius: 0.25rem; font-size: 0.75rem; border: 1px solid var(--glass-border);">${record.category}</span></td>
+        <td>${expBadge}${timelineIcon}</td>
         <td style="font-size: 0.85rem; font-weight: 500;">${record.agency}</td>
-        <td class="desc-cell" title="Click to view details">
-          <div class="desc-text-clamp" style="font-size: 0.85rem; color: var(--text-secondary); max-width: 280px; line-height: 1.4;">${record.description || ''}</div>
+        <td class="desc-cell" data-record-id="${record.id}" title="Click to view & edit details" style="cursor:pointer;">
+          <div class="desc-text-clamp" style="font-size: 0.85rem; color: var(--text-secondary); max-width: 260px; line-height: 1.4;">${record.description || ''}</div>
         </td>
         <td style="color: var(--accent-gold); font-weight: 600; font-family: 'Inter', monospace;">$${record.amount.toLocaleString()}</td>
-        <td class="hash-cell" data-hash="${record.hash}" style="font-family: monospace; font-size: 0.8rem; color: var(--accent-blue); text-align: right;" title="Click to copy full hash">${shortHash}</td>
+        <td style="text-align:center;">${auditCell}</td>
+        <td class="id-cell" data-id="${record.id}" style="font-family: monospace; font-size: 0.8rem; color: var(--accent-blue); text-align: right;" title="Click to copy full ID">${shortId}</td>
       </tr>
     `;
   }).join('');
+
 }
 
 function detectMediaType(url) {
@@ -4131,135 +5238,407 @@ function getVimeoEmbedUrl(url) {
   return match ? `https://player.vimeo.com/video/${match[1]}` : null;
 }
 
-function openDetailModal(record) {
-  const modal = document.getElementById('detail-modal');
-  const content = document.getElementById('modal-details-content');
-  if (!modal || !content) return;
-
-  const date = new Date(record.timestamp).toLocaleString(undefined, {
-    month: 'long', day: 'numeric', year: 'numeric',
-    hour: '2-digit', minute: '2-digit', second: '2-digit'
-  });
-
-  let splitsHTML = '';
-  if (record.allocations && record.allocations.length > 1) {
-    const cardsHTML = record.allocations.map(alloc => {
-      return `
-        <div class="modal-split-card">
-          <div class="modal-split-card-header">
-            <span class="modal-split-card-amount">$${alloc.amount.toLocaleString()}</span>
-            <div class="modal-split-badges">
-              <span class="modal-split-badge-reg">${alloc.region}</span>
-              <span class="modal-split-badge-cat">${alloc.category}</span>
-            </div>
-          </div>
-          <div class="modal-split-card-agency">${alloc.agency}</div>
-          <div class="modal-split-card-desc">${alloc.description || 'No description provided.'}</div>
-        </div>
-      `;
-    }).join('');
-
-    splitsHTML = `
-      <div class="modal-splits-section">
-        <div class="modal-splits-title">Granular Allocation Splits (${record.allocations.length})</div>
-        <div class="modal-splits-grid">${cardsHTML}</div>
-      </div>
-    `;
+function buildMediaItemHTML(item) {
+  if (item.type === 'video') {
+    const embedUrl = getYouTubeEmbedUrl(item.url) || getVimeoEmbedUrl(item.url);
+    if (embedUrl) return `<div style="position:relative;padding-bottom:56.25%;height:0;overflow:hidden;border-radius:0.5rem;border:1px solid var(--glass-border);background:#000;"><iframe src="${embedUrl}" style="position:absolute;top:0;left:0;width:100%;height:100%;border:0;" allowfullscreen loading="lazy"></iframe></div>`;
+    return `<a href="${item.url}" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:0.5rem;color:#f59e0b;text-decoration:none;padding:0.6rem 0.75rem;background:rgba(245,158,11,0.07);border:1px solid rgba(245,158,11,0.2);border-radius:0.4rem;font-size:0.8rem;">🎥 ${item.url} ↗</a>`;
+  } else if (item.type === 'image') {
+    return `<div style="border-radius:0.5rem;overflow:hidden;border:1px solid var(--glass-border);"><img src="${item.url}" alt="Attached image" style="width:100%;max-height:280px;object-fit:cover;display:block;" loading="lazy"><div style="padding:0.3rem 0.6rem;font-size:0.6rem;color:var(--text-secondary);background:rgba(0,0,0,0.3);"><a href="${item.url}" target="_blank" rel="noopener" style="color:#10b981;">🖼 View Full Image ↗</a></div></div>`;
+  } else if (item.type === 'pdf') {
+    return `<a href="${item.url}" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:0.6rem;color:#38bdf8;text-decoration:none;padding:0.6rem 0.75rem;background:rgba(56,189,248,0.07);border:1px solid rgba(56,189,248,0.2);border-radius:0.4rem;font-size:0.8rem;">📄 View PDF Document ↗<span style="font-size:0.6rem;color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:300px;">${item.url}</span></a>`;
   }
-
-  // --- Build Media Gallery HTML ---
-  let mediaHTML = '';
-  if (record.mediaItems && record.mediaItems.length > 0) {
-    const itemsHTML = record.mediaItems.map(item => {
-      if (item.type === 'video') {
-        const embedUrl = getYouTubeEmbedUrl(item.url) || getVimeoEmbedUrl(item.url);
-        if (embedUrl) {
-          return `<div style="position:relative;padding-bottom:56.25%;height:0;overflow:hidden;border-radius:0.5rem;border:1px solid var(--glass-border);background:#000;">
-            <iframe src="${embedUrl}" style="position:absolute;top:0;left:0;width:100%;height:100%;border:0;" allowfullscreen loading="lazy"></iframe>
-          </div>`;
-        }
-        return `<a href="${item.url}" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:0.5rem;color:#f59e0b;text-decoration:none;padding:0.6rem 0.75rem;background:rgba(245,158,11,0.07);border:1px solid rgba(245,158,11,0.2);border-radius:0.4rem;font-size:0.8rem;">🎥 ${item.url} ↗</a>`;
-      } else if (item.type === 'image') {
-        return `<div style="border-radius:0.5rem;overflow:hidden;border:1px solid var(--glass-border);">
-          <img src="${item.url}" alt="Attached image" style="width:100%;max-height:280px;object-fit:cover;display:block;" loading="lazy">
-          <div style="padding:0.3rem 0.6rem;font-size:0.6rem;color:var(--text-secondary);background:rgba(0,0,0,0.3);">
-            <a href="${item.url}" target="_blank" rel="noopener" style="color:#10b981;">🖼 View Full Image ↗</a>
-          </div>
-        </div>`;
-      } else if (item.type === 'pdf') {
-        return `<a href="${item.url}" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:0.6rem;color:#38bdf8;text-decoration:none;padding:0.6rem 0.75rem;background:rgba(56,189,248,0.07);border:1px solid rgba(56,189,248,0.2);border-radius:0.4rem;font-size:0.8rem;">📄 View PDF Document ↗<span style="font-size:0.6rem;color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:300px;">${item.url}</span></a>`;
-      } else {
-        return `<a href="${item.url}" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:0.5rem;color:var(--text-secondary);text-decoration:none;padding:0.5rem 0.75rem;background:rgba(255,255,255,0.03);border:1px solid var(--glass-border);border-radius:0.4rem;font-size:0.75rem;">🔗 ${item.url} ↗</a>`;
-      }
-    }).join('');
-    mediaHTML = `
-      <div style="margin-top:1rem;padding-top:1rem;border-top:1px solid rgba(255,255,255,0.06);">
-        <div style="font-size:0.6rem;color:var(--accent-blue);font-weight:700;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.65rem;">📎 Media &amp; Documentation (${record.mediaItems.length})</div>
-        <div style="display:flex;flex-direction:column;gap:0.65rem;">${itemsHTML}</div>
-      </div>`;
-  }
-
-  // --- Build Audit Report HTML ---
-  let auditHTML = '';
-  if (record.auditReport) {
-    const ar = record.auditReport;
-    const statusColors = { Passed: '#10b981', Failed: '#ef4444', Qualified: '#f59e0b', Pending: '#38bdf8' };
-    const statusIcons = { Passed: '✓ Passed', Failed: '✗ Failed', Qualified: '⚠ Qualified Opinion', Pending: '⏳ Pending Review' };
-    const sc = statusColors[ar.status] || 'rgba(255,255,255,0.4)';
-    auditHTML = `
-      <div style="margin-top:1rem;padding-top:1rem;border-top:1px solid rgba(255,255,255,0.06);">
-        <div style="font-size:0.6rem;color:#38bdf8;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.65rem;">🔍 Audit Report</div>
-        <div style="background:rgba(0,0,0,0.2);border:1px solid var(--glass-border);border-radius:0.5rem;padding:0.85rem;display:flex;flex-direction:column;gap:0.55rem;">
-          ${ar.status ? `<div><span style="background:${sc}22;color:${sc};border:1px solid ${sc}55;padding:0.2rem 0.7rem;border-radius:999px;font-size:0.7rem;font-weight:700;">${statusIcons[ar.status] || ar.status}</span></div>` : ''}
-          ${ar.firm ? `<div style="font-size:0.78rem;"><span style="color:var(--text-secondary);margin-right:0.35rem;">Auditor:</span><strong>${ar.firm}</strong></div>` : ''}
-          ${ar.date ? `<div style="font-size:0.78rem;"><span style="color:var(--text-secondary);margin-right:0.35rem;">Date:</span>${new Date(ar.date + 'T12:00:00').toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</div>` : ''}
-          ${ar.reportUrl ? `<a href="${ar.reportUrl}" target="_blank" rel="noopener" style="font-size:0.78rem;color:#38bdf8;display:flex;align-items:center;gap:0.35rem;text-decoration:none;">📄 View Full Audit Report ↗</a>` : ''}
-          ${ar.notes ? `<div style="font-size:0.75rem;color:var(--text-secondary);border-top:1px dashed rgba(255,255,255,0.06);padding-top:0.5rem;margin-top:0.15rem;line-height:1.55;">${ar.notes}</div>` : ''}
-        </div>
-      </div>`;
-  }
-
-  content.innerHTML = `
-    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
-      <div class="modal-field">
-        <span class="modal-field-label">Date &amp; Time</span>
-        <span class="modal-field-value">${date}</span>
-      </div>
-      <div class="modal-field">
-        <span class="modal-field-label">Region (State)</span>
-        <span class="modal-field-value" style="font-weight: 600;">${record.region}</span>
-      </div>
-      <div class="modal-field">
-        <span class="modal-field-label">Category</span>
-        <span class="modal-field-value"><span style="background: rgba(255,255,255,0.08); padding: 0.2rem 0.5rem; border-radius: 0.25rem; font-size: 0.75rem; border: 1px solid var(--glass-border);">${record.category}</span></span>
-      </div>
-      <div class="modal-field">
-        <span class="modal-field-label">Total Allocated Amount</span>
-        <span class="modal-field-value" style="color: var(--accent-gold); font-weight: 700; font-size: 1.1rem;">$${record.amount.toLocaleString()}</span>
-      </div>
-      <div class="modal-field" style="grid-column: span 2;">
-        <span class="modal-field-label">Authorized Agency</span>
-        <span class="modal-field-value" style="font-weight: 500;">${record.agency}</span>
-      </div>
-    </div>
-    
-    <div class="modal-field" style="margin-top: 0.5rem; margin-bottom: 1rem;">
-      <span class="modal-field-label">Transaction Summary</span>
-      <div class="modal-desc-box">${record.description || 'No description provided.'}</div>
-    </div>
-    
-    ${splitsHTML}
-    ${mediaHTML}
-    ${auditHTML}
-    
-    <div class="modal-field" style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid rgba(255,255,255,0.06);">
-      <span class="modal-field-label">Cryptographic Hash Anchor</span>
-      <span class="modal-field-value" style="font-family: monospace; font-size: 0.75rem; color: var(--accent-blue); word-break: break-all; background: rgba(0,0,0,0.2); padding: 0.5rem; border-radius: 0.4rem; border: 1px solid var(--glass-border);">${record.hash}</span>
-    </div>
-  `;
-
-  modal.classList.add('active');
+  return `<a href="${item.url}" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:0.5rem;color:var(--text-secondary);text-decoration:none;padding:0.5rem 0.75rem;background:rgba(255,255,255,0.03);border:1px solid var(--glass-border);border-radius:0.4rem;font-size:0.75rem;">🔗 ${item.url} ↗</a>`;
 }
+
+function openRecordPanel(record) {
+  const overlay = document.getElementById('record-panel-overlay');
+  const body = document.getElementById('record-panel-body');
+  if (!overlay || !body) return;
+
+  // Refresh record from ledger (for live patches)
+  let r = ledger.getRecords({}).find(x => x.id === record.id) || record;
+
+  // --- Header ---
+  const expType = r.expenditureType || '';
+  const expBadgeClass = expType === 'CapEx' ? 'ledger-badge-capex' : expType === 'OpEx' ? 'ledger-badge-opex' : 'ledger-badge-mixed';
+  document.getElementById('rp-header-badge').innerHTML = [
+    expType ? `<span class="ledger-badge ${expBadgeClass}">${expType}</span>` : '',
+    r.hasTimeline ? `<span style="font-size:0.7rem;background:rgba(56,189,248,0.12);color:#38bdf8;border:1px solid rgba(56,189,248,0.3);padding:0.1rem 0.5rem;border-radius:999px;">📅 Has Timeline</span>` : '',
+    r.category ? `<span style="font-size:0.7rem;background:rgba(255,255,255,0.06);color:var(--text-secondary);border:1px solid var(--glass-border);padding:0.1rem 0.5rem;border-radius:999px;">${r.category}</span>` : ''
+  ].join('');
+  document.getElementById('rp-header-title').textContent = `${r.agency} — ${r.region}`;
+  document.getElementById('rp-header-meta').textContent = `$${r.amount.toLocaleString()} · ${new Date(r.timestamp).toLocaleString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}`;
+
+  // Tab system
+  const tabs = overlay.querySelectorAll('.rp-tab');
+  let activeTab = 'overview';
+
+  function renderTab(tab) {
+    activeTab = tab;
+    tabs.forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
+    // Re-fetch fresh record on each tab render
+    r = ledger.getRecords({}).find(x => x.id === record.id) || record;
+
+    // --- Helper for section labels ---
+    const sectionLabel = (icon, text) => `<div style="font-size:0.6rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--accent-blue);margin-bottom:0.75rem;">${icon} ${text}</div>`;
+    const emptyState = (msg) => `<div style="color:var(--text-secondary);font-size:0.82rem;text-align:center;padding:2rem 0;opacity:0.6;">${msg}</div>`;
+    const addForm = (id, html) => `<div class="rp-add-form" id="${id}">${html}</div>`;
+    const saveBtn = (label) => `<button type="button" class="rp-save-btn">${label}</button>`;
+
+    if (tab === 'overview') {
+      const splitsHTML = (r.allocations && r.allocations.length > 1) ? `
+        <div class="modal-splits-section" style="margin-top:1rem;">
+          <div class="modal-splits-title">Allocation Splits (${r.allocations.length})</div>
+          <div class="modal-splits-grid">${r.allocations.map(a => `
+            <div class="modal-split-card">
+              <div class="modal-split-card-header"><span class="modal-split-card-amount">$${a.amount.toLocaleString()}</span><div class="modal-split-badges"><span class="modal-split-badge-reg">${a.region}</span><span class="modal-split-badge-cat">${a.category}</span>${a.expenditureType ? `<span class="ledger-badge ${a.expenditureType==='CapEx'?'ledger-badge-capex':'ledger-badge-opex'}" style="font-size:0.55rem;padding:0.1rem 0.4rem;">${a.expenditureType}</span>` : ''}</div></div>
+              <div class="modal-split-card-agency">${a.agency}</div>
+              <div class="modal-split-card-desc">${a.description || ''}</div>
+            </div>`).join('')}</div>
+        </div>` : '';
+
+      body.innerHTML = `
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1rem;">
+          <div class="modal-field"><span class="modal-field-label">Date &amp; Time</span><span class="modal-field-value">${new Date(r.timestamp).toLocaleString(undefined,{month:'long',day:'numeric',year:'numeric',hour:'2-digit',minute:'2-digit'})}</span></div>
+          <div class="modal-field"><span class="modal-field-label">Region</span><span class="modal-field-value" style="font-weight:600;">${r.region}</span></div>
+          <div class="modal-field"><span class="modal-field-label">Category</span><span class="modal-field-value"><span style="background:rgba(255,255,255,0.08);padding:0.2rem 0.5rem;border-radius:0.25rem;font-size:0.75rem;border:1px solid var(--glass-border);">${r.category}</span></span></div>
+          <div class="modal-field"><span class="modal-field-label">Total Amount</span><span class="modal-field-value" style="color:var(--accent-gold);font-weight:700;font-size:1.1rem;">$${r.amount.toLocaleString()}</span></div>
+          <div class="modal-field" style="grid-column:span 2;"><span class="modal-field-label">Authorized Agency</span><span class="modal-field-value">${r.agency}</span></div>
+        </div>
+        <div class="modal-field"><span class="modal-field-label">Transaction Summary</span><div class="modal-desc-box">${r.description || '—'}</div></div>
+        ${splitsHTML}
+        <div class="modal-field" style="margin-top:1rem;padding-top:1rem;border-top:1px solid rgba(255,255,255,0.06);">
+          <span class="modal-field-label">Record ID</span>
+          <span class="modal-field-value" style="font-family:monospace;font-size:0.72rem;color:var(--accent-blue);word-break:break-all;background:rgba(0,0,0,0.2);padding:0.4rem;border-radius:0.4rem;border:1px solid var(--glass-border);">${r.id}</span>
+        </div>`;
+
+    } else if (tab === 'timeline') {
+      const allTimelines = (r.allocations || []).filter(a => a.timeline && a.timeline.startDate);
+      if (!r.hasTimeline || allTimelines.length === 0) {
+        body.innerHTML = emptyState('No timeline set for this record. Enable "Has Timeline?" when creating splits.');
+        return;
+      }
+      const milestones = r.milestones || [];
+      // Build timeline visual for first allocation with timeline (or primary)
+      const tl = allTimelines[0].timeline;
+      const start = tl.startDate ? new Date(tl.startDate + 'T12:00:00') : null;
+      const end = tl.endDate ? new Date(tl.endDate + 'T12:00:00') : null;
+      const now = new Date();
+      let progressPct = 0;
+      if (start && end) {
+        const total = end - start;
+        const elapsed = Math.min(now - start, total);
+        progressPct = Math.max(0, Math.min(100, Math.round((elapsed / total) * 100)));
+      }
+      const fmtDate = (d) => d ? d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—';
+
+      // Milestone markers on timeline
+      const milestonePips = milestones.filter(m => m.targetDate).map(m => {
+        const md = new Date(m.targetDate + 'T12:00:00');
+        let pct = 0;
+        if (start && end && md > start) pct = Math.min(100, Math.round(((md - start) / (end - start)) * 100));
+        const statusColor = m.status === 'Released' ? '#10b981' : m.status === 'Withheld' ? '#ef4444' : '#f59e0b';
+        return `<div class="timeline-pip" style="left:${pct}%;background:${statusColor};" title="${m.name} (${m.status})"><div class="timeline-pip-label">${m.name}</div></div>`;
+      }).join('');
+
+      body.innerHTML = `
+        ${sectionLabel('📅', 'Project Timeline')}
+        <div class="timeline-track-container">
+          <div class="timeline-date-start">${fmtDate(start)}</div>
+          <div class="timeline-date-end">${fmtDate(end)}</div>
+          <div class="timeline-bar-outer">
+            <div class="timeline-bar-inner" style="width:${progressPct}%;"></div>
+            <div class="timeline-now-marker" style="left:${progressPct}%;" title="Today (${progressPct}%)"></div>
+            ${milestonePips}
+          </div>
+          <div style="text-align:center;font-size:0.75rem;color:var(--text-secondary);margin-top:0.5rem;">${progressPct}% elapsed</div>
+        </div>
+        ${allTimelines.length > 1 ? `<div style="margin-top:1rem;font-size:0.72rem;color:var(--text-secondary);">Note: ${allTimelines.length} splits have timelines. Showing primary split.</div>` : ''}
+      `;
+
+    } else if (tab === 'milestones') {
+      const milestones = r.milestones || [];
+      const totalPct = milestones.reduce((s, m) => s + (Number(m.pct) || 0), 0);
+      const totalReleased = milestones.filter(m => m.status === 'Released').reduce((s, m) => s + (Number(m.amount) || 0), 0);
+
+      body.innerHTML = `
+        ${sectionLabel('🏁', 'Milestone-Based Drawdowns')}
+        ${milestones.length > 0 ? `
+          <div style="margin-bottom:1rem;display:flex;gap:1rem;font-size:0.78rem;">
+            <span style="color:var(--text-secondary);">Total allocation: <strong style="color:#fff;">${totalPct}%</strong></span>
+            <span style="color:var(--text-secondary);">Released: <strong style="color:#10b981;">$${totalReleased.toLocaleString()}</strong></span>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:0.6rem;margin-bottom:1.25rem;">
+            ${milestones.map((m, i) => {
+              const sc = m.status === 'Released' ? '#10b981' : m.status === 'Withheld' ? '#ef4444' : '#f59e0b';
+              return `<div class="rp-list-card">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.3rem;">
+                  <strong style="font-size:0.85rem;">${m.name}</strong>
+                  <span style="background:${sc}22;color:${sc};border:1px solid ${sc}55;padding:0.15rem 0.55rem;border-radius:999px;font-size:0.65rem;font-weight:700;">${m.status}</span>
+                </div>
+                <div style="font-size:0.75rem;color:var(--text-secondary);display:flex;gap:1rem;flex-wrap:wrap;">
+                  <span>${m.pct}% of total</span>
+                  ${m.amount ? `<span>$${Number(m.amount).toLocaleString()}</span>` : ''}
+                  ${m.targetDate ? `<span>Due: ${new Date(m.targetDate+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</span>` : ''}
+                </div>
+                ${m.notes ? `<div style="font-size:0.72rem;color:var(--text-secondary);margin-top:0.3rem;opacity:0.8;">${m.notes}</div>` : ''}
+              </div>`;
+            }).join('')}
+          </div>` : emptyState('No milestones yet. Add the first drawdown milestone below.')}
+        ${addForm('ms-add-form', `
+          <div style="font-size:0.65rem;font-weight:700;color:var(--accent-gold);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:0.65rem;">+ Add Milestone</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;">
+            <div class="form-group" style="margin:0;"><label>MILESTONE NAME</label><input type="text" id="ms-name" placeholder="e.g. Foundation Complete"></div>
+            <div class="form-group" style="margin:0;"><label>% OF TOTAL</label><input type="number" id="ms-pct" placeholder="30" min="0" max="100"></div>
+            <div class="form-group" style="margin:0;"><label>AMOUNT ($)</label><input type="text" id="ms-amount" placeholder="e.g. 9,000,000"></div>
+            <div class="form-group" style="margin:0;"><label>TARGET DATE</label><input type="date" id="ms-date"></div>
+            <div class="form-group" style="margin:0;grid-column:span 2;"><label>STATUS</label>
+              <select id="ms-status"><option value="Pending">⏳ Pending</option><option value="Released">✓ Released</option><option value="Withheld">✗ Withheld</option></select></div>
+            <div class="form-group" style="margin:0;grid-column:span 2;"><label>NOTES</label><input type="text" id="ms-notes" placeholder="Optional notes..."></div>
+          </div>
+          ${saveBtn('Add Milestone')}
+        `)}
+      `;
+      body.querySelector('#ms-add-form .rp-save-btn').addEventListener('click', () => {
+        const name = document.getElementById('ms-name').value.trim();
+        if (!name) return;
+        const updated = ledger.getRecords({}).find(x => x.id === r.id);
+        const milestones = [...(updated.milestones || []), {
+          name,
+          pct: document.getElementById('ms-pct').value,
+          amount: document.getElementById('ms-amount').value.replace(/,/g,''),
+          targetDate: document.getElementById('ms-date').value,
+          status: document.getElementById('ms-status').value,
+          notes: document.getElementById('ms-notes').value.trim()
+        }];
+        ledger.updateRecord(r.id, { milestones });
+        renderLedger();
+        renderTab('milestones');
+      });
+
+    } else if (tab === 'contractor') {
+      const payments = r.contractorPayments || [];
+      body.innerHTML = `
+        ${sectionLabel('🔧', 'Contractor Payments')}
+        ${payments.length > 0 ? `
+          <div style="display:flex;flex-direction:column;gap:0.6rem;margin-bottom:1.25rem;">
+            ${payments.map(p => `<div class="rp-list-card">
+              <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:0.25rem;">
+                <strong style="font-size:0.85rem;">${p.contractor}</strong>
+                <span style="color:var(--accent-gold);font-weight:700;">$${Number(p.amount).toLocaleString()}</span>
+              </div>
+              <div style="font-size:0.75rem;color:var(--text-secondary);display:flex;gap:1rem;flex-wrap:wrap;">
+                ${p.date ? `<span>${new Date(p.date+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</span>` : ''}
+                ${p.invoiceRef ? `<span>Inv# ${p.invoiceRef}</span>` : ''}
+              </div>
+              ${p.description ? `<div style="font-size:0.72rem;color:var(--text-secondary);margin-top:0.3rem;">${p.description}</div>` : ''}
+            </div>`).join('')}
+          </div>` : emptyState('No contractor payments logged yet.')}
+        ${addForm('cp-add-form', `
+          <div style="font-size:0.65rem;font-weight:700;color:var(--accent-gold);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:0.65rem;">+ Log Payment</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;">
+            <div class="form-group" style="margin:0;"><label>CONTRACTOR / PAYEE</label><input type="text" id="cp-name" placeholder="e.g. Acme Construction LLC"></div>
+            <div class="form-group" style="margin:0;"><label>AMOUNT ($)</label><input type="text" id="cp-amount" placeholder="e.g. 2,500,000"></div>
+            <div class="form-group" style="margin:0;"><label>PAYMENT DATE</label><input type="date" id="cp-date"></div>
+            <div class="form-group" style="margin:0;"><label>INVOICE REF</label><input type="text" id="cp-inv" placeholder="INV-2024-001"></div>
+            <div class="form-group" style="margin:0;grid-column:span 2;"><label>DESCRIPTION</label><input type="text" id="cp-desc" placeholder="Scope of work..."></div>
+          </div>
+          ${saveBtn('Log Payment')}
+        `)}
+      `;
+      body.querySelector('#cp-add-form .rp-save-btn').addEventListener('click', () => {
+        const contractor = document.getElementById('cp-name').value.trim();
+        if (!contractor) return;
+        const updated = ledger.getRecords({}).find(x => x.id === r.id);
+        const contractorPayments = [...(updated.contractorPayments || []), {
+          contractor,
+          amount: document.getElementById('cp-amount').value.replace(/,/g,''),
+          date: document.getElementById('cp-date').value,
+          invoiceRef: document.getElementById('cp-inv').value.trim(),
+          description: document.getElementById('cp-desc').value.trim()
+        }];
+        ledger.updateRecord(r.id, { contractorPayments });
+        renderLedger();
+        renderTab('contractor');
+      });
+
+    } else if (tab === 'changeorders') {
+      const orders = r.changeOrders || [];
+      body.innerHTML = `
+        ${sectionLabel('📋', 'Change Orders')}
+        ${orders.length > 0 ? `
+          <div style="display:flex;flex-direction:column;gap:0.6rem;margin-bottom:1.25rem;">
+            ${orders.map(co => {
+              const amtNum = Number(co.costImpact);
+              const amtStr = amtNum >= 0 ? `+$${amtNum.toLocaleString()}` : `-$${Math.abs(amtNum).toLocaleString()}`;
+              const amtColor = amtNum >= 0 ? '#ef4444' : '#10b981';
+              return `<div class="rp-list-card">
+                <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:0.25rem;">
+                  <strong style="font-size:0.85rem;">${co.title}</strong>
+                  <span style="color:${amtColor};font-weight:700;font-size:0.8rem;">${amtStr}</span>
+                </div>
+                <div style="font-size:0.75rem;color:var(--text-secondary);">${co.date ? new Date(co.date+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : ''} ${co.approvedBy ? `· Approved by: ${co.approvedBy}` : ''}</div>
+                ${co.reason ? `<div style="font-size:0.72rem;color:var(--text-secondary);margin-top:0.3rem;">${co.reason}</div>` : ''}
+              </div>`;
+            }).join('')}
+          </div>` : emptyState('No change orders logged yet.')}
+        ${addForm('co-add-form', `
+          <div style="font-size:0.65rem;font-weight:700;color:var(--accent-gold);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:0.65rem;">+ Add Change Order</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;">
+            <div class="form-group" style="margin:0;grid-column:span 2;"><label>TITLE / DESCRIPTION</label><input type="text" id="co-title" placeholder="e.g. Scope expansion — additional drainage system"></div>
+            <div class="form-group" style="margin:0;"><label>COST IMPACT ($)</label><input type="text" id="co-cost" placeholder="e.g. +500000 or -200000"></div>
+            <div class="form-group" style="margin:0;"><label>DATE</label><input type="date" id="co-date"></div>
+            <div class="form-group" style="margin:0;"><label>APPROVED BY</label><input type="text" id="co-approver" placeholder="Name / Authority"></div>
+            <div class="form-group" style="margin:0;"><label>REASON</label><input type="text" id="co-reason" placeholder="Brief justification..."></div>
+          </div>
+          ${saveBtn('Add Change Order')}
+        `)}
+      `;
+      body.querySelector('#co-add-form .rp-save-btn').addEventListener('click', () => {
+        const title = document.getElementById('co-title').value.trim();
+        if (!title) return;
+        const updated = ledger.getRecords({}).find(x => x.id === r.id);
+        const changeOrders = [...(updated.changeOrders || []), {
+          title,
+          costImpact: document.getElementById('co-cost').value.replace(/[^0-9.-]/g,''),
+          date: document.getElementById('co-date').value,
+          approvedBy: document.getElementById('co-approver').value.trim(),
+          reason: document.getElementById('co-reason').value.trim()
+        }];
+        ledger.updateRecord(r.id, { changeOrders });
+        renderLedger();
+        renderTab('changeorders');
+      });
+
+    } else if (tab === 'valuation') {
+      const valuations = r.assetValuations || [];
+      body.innerHTML = `
+        ${sectionLabel('📈', 'Asset Valuation History')}
+        ${valuations.length > 0 ? `
+          <div style="display:flex;flex-direction:column;gap:0.6rem;margin-bottom:1.25rem;">
+            ${valuations.map((v, i) => `<div class="rp-list-card">
+              <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:0.25rem;">
+                <span style="font-size:0.75rem;color:var(--text-secondary);">${v.date ? new Date(v.date+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : 'No date'}</span>
+                <span style="color:var(--accent-gold);font-weight:700;font-size:0.95rem;">$${Number(v.value).toLocaleString()}</span>
+              </div>
+              ${v.method ? `<div style="font-size:0.72rem;color:var(--text-secondary);">Method: ${v.method}</div>` : ''}
+              ${v.notes ? `<div style="font-size:0.72rem;color:var(--text-secondary);margin-top:0.25rem;">${v.notes}</div>` : ''}
+            </div>`).join('')}
+          </div>` : emptyState('No valuation entries yet. Log the first appraisal below.')}
+        ${addForm('av-add-form', `
+          <div style="font-size:0.65rem;font-weight:700;color:var(--accent-gold);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:0.65rem;">+ Add Valuation Entry</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;">
+            <div class="form-group" style="margin:0;"><label>APPRAISED VALUE ($)</label><input type="text" id="av-value" placeholder="e.g. 12,000,000"></div>
+            <div class="form-group" style="margin:0;"><label>VALUATION DATE</label><input type="date" id="av-date"></div>
+            <div class="form-group" style="margin:0;"><label>METHOD</label><input type="text" id="av-method" placeholder="e.g. DCF, Comparable Sales"></div>
+            <div class="form-group" style="margin:0;"><label>APPRAISER</label><input type="text" id="av-appraiser" placeholder="Firm or individual"></div>
+            <div class="form-group" style="margin:0;grid-column:span 2;"><label>NOTES</label><input type="text" id="av-notes" placeholder="Key assumptions or findings..."></div>
+          </div>
+          ${saveBtn('Add Valuation')}
+        `)}
+      `;
+      body.querySelector('#av-add-form .rp-save-btn').addEventListener('click', () => {
+        const value = document.getElementById('av-value').value.replace(/,/g,'');
+        if (!value) return;
+        const updated = ledger.getRecords({}).find(x => x.id === r.id);
+        const assetValuations = [...(updated.assetValuations || []), {
+          value,
+          date: document.getElementById('av-date').value,
+          method: document.getElementById('av-method').value.trim(),
+          appraiser: document.getElementById('av-appraiser').value.trim(),
+          notes: document.getElementById('av-notes').value.trim()
+        }];
+        ledger.updateRecord(r.id, { assetValuations });
+        renderLedger();
+        renderTab('valuation');
+      });
+
+    } else if (tab === 'media') {
+      const items = r.mediaItems || [];
+      body.innerHTML = `
+        ${sectionLabel('📎', 'Media & Documentation')}
+        ${items.length > 0
+          ? `<div style="display:flex;flex-direction:column;gap:0.75rem;margin-bottom:1.25rem;">${items.map(buildMediaItemHTML).join('')}</div>`
+          : emptyState('No media attached.')}
+        ${addForm('media-add-form', `
+          <div style="font-size:0.65rem;font-weight:700;color:var(--accent-gold);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:0.65rem;">+ Add Media URL</div>
+          <div class="form-group" style="margin:0 0 0.5rem 0;"><label>URL</label><input type="url" id="media-new-url" placeholder="YouTube, Vimeo, image, PDF, or any URL"></div>
+          ${saveBtn('Add Media')}
+        `)}
+      `;
+      body.querySelector('#media-add-form .rp-save-btn').addEventListener('click', () => {
+        const url = document.getElementById('media-new-url').value.trim();
+        if (!url) return;
+        const updated = ledger.getRecords({}).find(x => x.id === r.id);
+        const mediaItems = [...(updated.mediaItems || []), { url, type: detectMediaType(url) }];
+        ledger.updateRecord(r.id, { mediaItems });
+        renderLedger();
+        renderTab('media');
+      });
+
+    } else if (tab === 'audit') {
+      const ar = r.auditReport || {};
+      const statusColors = { Passed: '#10b981', Failed: '#ef4444', Qualified: '#f59e0b', Pending: '#38bdf8' };
+      const statusIcons = { Passed: '✓ Passed', Failed: '✗ Failed', Qualified: '⚠ Qualified Opinion', Pending: '⏳ Pending Review' };
+
+      const existingHTML = ar.status ? `
+        <div style="background:rgba(0,0,0,0.2);border:1px solid var(--glass-border);border-radius:0.5rem;padding:1rem;display:flex;flex-direction:column;gap:0.55rem;margin-bottom:1.25rem;">
+          ${ar.status ? `<div><span style="background:${statusColors[ar.status]}22;color:${statusColors[ar.status]};border:1px solid ${statusColors[ar.status]}55;padding:0.2rem 0.7rem;border-radius:999px;font-size:0.7rem;font-weight:700;">${statusIcons[ar.status]}</span></div>` : ''}
+          ${ar.firm ? `<div style="font-size:0.8rem;"><span style="color:var(--text-secondary);">Auditor: </span><strong>${ar.firm}</strong></div>` : ''}
+          ${ar.date ? `<div style="font-size:0.8rem;"><span style="color:var(--text-secondary);">Date: </span>${new Date(ar.date+'T12:00:00').toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'})}</div>` : ''}
+          ${ar.reportUrl ? `<a href="${ar.reportUrl}" target="_blank" rel="noopener" style="font-size:0.8rem;color:#38bdf8;text-decoration:none;">📄 View Full Audit Report ↗</a>` : ''}
+          ${ar.notes ? `<div style="font-size:0.75rem;color:var(--text-secondary);border-top:1px dashed rgba(255,255,255,0.06);padding-top:0.5rem;line-height:1.55;">${ar.notes}</div>` : ''}
+        </div>` : emptyState('No audit report attached yet.');
+
+      body.innerHTML = `
+        ${sectionLabel('🔍', 'Audit Report')}
+        ${existingHTML}
+        ${addForm('audit-add-form', `
+          <div style="font-size:0.65rem;font-weight:700;color:var(--accent-gold);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:0.65rem;">${ar.status ? 'Update Audit Report' : '+ Attach Audit Report'}</div>
+          <div style="display:flex;flex-direction:column;gap:0.5rem;">
+            <div class="form-group" style="margin:0;"><label>AUDITOR / FIRM</label><input type="text" id="audit-new-firm" value="${ar.firm || ''}" placeholder="e.g. Deloitte &amp; Touche LLP"></div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;">
+              <div class="form-group" style="margin:0;"><label>AUDIT DATE</label><input type="date" id="audit-new-date" value="${ar.date || ''}"></div>
+              <div class="form-group" style="margin:0;"><label>STATUS</label>
+                <select id="audit-new-status">
+                  <option value="">— No Audit —</option>
+                  <option value="Pending" ${ar.status==='Pending'?'selected':''}>⏳ Pending Review</option>
+                  <option value="Passed" ${ar.status==='Passed'?'selected':''}>✓ Passed</option>
+                  <option value="Qualified" ${ar.status==='Qualified'?'selected':''}>⚠ Qualified Opinion</option>
+                  <option value="Failed" ${ar.status==='Failed'?'selected':''}>✗ Failed</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-group" style="margin:0;"><label>REPORT URL</label><input type="url" id="audit-new-url" value="${ar.reportUrl || ''}" placeholder="https://example.com/audit-report.pdf"></div>
+            <div class="form-group" style="margin:0;"><label>AUDIT NOTES</label><textarea id="audit-new-notes" rows="3" placeholder="Key findings, scope, qualifications...">${ar.notes || ''}</textarea></div>
+          </div>
+          ${saveBtn('Save Audit Report')}
+        `)}
+      `;
+      body.querySelector('#audit-add-form .rp-save-btn').addEventListener('click', () => {
+        const firm = document.getElementById('audit-new-firm').value.trim();
+        const date = document.getElementById('audit-new-date').value;
+        const status = document.getElementById('audit-new-status').value;
+        const reportUrl = document.getElementById('audit-new-url').value.trim();
+        const notes = document.getElementById('audit-new-notes').value.trim();
+        const auditReport = (firm || status || reportUrl)
+          ? { firm, date, status, reportUrl, notes }
+          : null;
+        ledger.updateRecord(r.id, { auditReport });
+        renderLedger();
+        renderTab('audit');
+      });
+    }
+  }
+
+  // Tab click listeners
+  tabs.forEach(t => t.addEventListener('click', () => renderTab(t.dataset.tab)));
+
+  renderTab('overview');
+  overlay.classList.add('active');
+}
+
 
 // ==========================================
 // SGA LIVE NEWS TERMINAL ENGINE

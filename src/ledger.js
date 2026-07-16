@@ -30,40 +30,22 @@ export class SGALedger {
         description: 'Genesis Block'
       };
       
-      const hash = await this.calculateHash(genesisRecord, '0');
-      
       this.chain.push({
-        record: genesisRecord,
-        previousHash: '0',
-        hash: hash
+        record: genesisRecord
       });
       this.save();
     }
   }
 
-  async calculateHash(record, previousHash) {
-    const dataString = JSON.stringify(record) + previousHash;
-    const msgBuffer = new TextEncoder().encode(dataString);
-    const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-  }
-
   async addRecord(recordData) {
-    const previousBlock = this.chain[this.chain.length - 1];
-    
     const newRecord = {
       id: crypto.randomUUID(),
       timestamp: new Date().toISOString(),
       ...recordData
     };
 
-    const hash = await this.calculateHash(newRecord, previousBlock.hash);
-
     const newBlock = {
-      record: newRecord,
-      previousHash: previousBlock.hash,
-      hash: hash
+      record: newRecord
     };
 
     this.chain.push(newBlock);
@@ -81,27 +63,19 @@ export class SGALedger {
     await this.init();
   }
 
-  async verifyIntegrity() {
-    for (let i = 1; i < this.chain.length; i++) {
-      const currentBlock = this.chain[i];
-      const previousBlock = this.chain[i - 1];
-
-      if (currentBlock.previousHash !== previousBlock.hash) {
-        return false;
-      }
-
-      const calculatedHash = await this.calculateHash(currentBlock.record, currentBlock.previousHash);
-      if (currentBlock.hash !== calculatedHash) {
-        return false;
-      }
+  updateRecord(id, patch) {
+    const block = this.chain.find(b => b.record.id === id);
+    if (block) {
+      block.record = { ...block.record, ...patch };
+      this.save();
+      return block.record;
     }
-    return true;
+    return null;
   }
 
   getRecords(filters = {}) {
     let records = this.chain.filter(block => block.record.id !== '0').map(block => ({
-      ...block.record,
-      hash: block.hash
+      ...block.record
     }));
 
     if (filters.category && filters.category !== 'All') {

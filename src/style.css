@@ -1309,6 +1309,35 @@ select option {
   transform: scale(0.92);
 }
 
+.chart-timeframe-btn {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--text-secondary);
+  border-radius: 0.25rem;
+  padding: 0.2rem 0.45rem;
+  cursor: pointer;
+  font-size: 0.65rem;
+  font-weight: bold;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.chart-timeframe-btn:hover {
+  background: rgba(255, 255, 255, 0.12) !important;
+  border-color: rgba(255, 255, 255, 0.2) !important;
+  color: #fff !important;
+}
+
+.chart-timeframe-btn:active {
+  transform: scale(0.92);
+}
+
+.chart-timeframe-btn.active {
+  background: rgba(56, 189, 248, 0.15) !important;
+  border-color: rgba(56, 189, 248, 0.3) !important;
+  color: var(--accent-blue) !important;
+}
+
+
 /* ==========================================
    SGA LIVE NEWS TERMINAL STYLES
    ========================================== */
@@ -1846,9 +1875,608 @@ select option {
 .tab-btn.active:hover {
   background: rgba(251, 191, 36, 0.2) !important;
   color: var(--accent-gold) !important;
+}/* ==========================================
+   RECORD DETAIL SLIDE-OVER PANEL
+   ========================================== */
+
+.record-panel-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  z-index: 1200;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+  display: flex;
+  justify-content: flex-end;
 }
 
+.record-panel-overlay.active {
+  opacity: 1;
+  pointer-events: all;
+}
 
+.record-panel {
+  width: 680px;
+  max-width: 95vw;
+  height: 100%;
+  background: #0b1425;
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  flex-direction: column;
+  transform: translateX(100%);
+  transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: -20px 0 60px rgba(0, 0, 0, 0.5);
+}
 
+.record-panel-overlay.active .record-panel {
+  transform: translateX(0);
+}
+
+.record-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 1.5rem 1.5rem 1.25rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  background: rgba(0, 0, 0, 0.2);
+  flex-shrink: 0;
+}
+
+.record-panel-tabs {
+  display: flex;
+  gap: 0;
+  overflow-x: auto;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  flex-shrink: 0;
+  scrollbar-width: none;
+}
+
+.record-panel-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.rp-tab {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+  letter-spacing: 0.02em;
+}
+
+.rp-tab:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.rp-tab.active {
+  color: var(--accent-blue);
+  border-bottom-color: var(--accent-blue);
+  background: rgba(56, 189, 248, 0.04);
+}
+
+.record-panel-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1.5rem;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.1) transparent;
+}
+
+.record-panel-body::-webkit-scrollbar {
+  width: 5px;
+}
+.record-panel-body::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.1);
+  border-radius: 3px;
+}
+
+/* ==========================================
+   CAPEX / OPEX BADGES
+   ========================================== */
+
+.ledger-badge {
+  display: inline-block;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  text-transform: uppercase;
+}
+
+.ledger-badge-capex {
+  background: rgba(56, 189, 248, 0.12);
+  color: #38bdf8;
+  border: 1px solid rgba(56, 189, 248, 0.3);
+}
+
+.ledger-badge-opex {
+  background: rgba(251, 191, 36, 0.1);
+  color: var(--accent-gold);
+  border: 1px solid rgba(251, 191, 36, 0.3);
+}
+
+.ledger-badge-mixed {
+  background: rgba(148, 163, 184, 0.08);
+  color: #94a3b8;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+/* ==========================================
+   TIMELINE VISUALIZATION
+   ========================================== */
+
+.timeline-track-container {
+  position: relative;
+  padding: 2rem 0 1rem;
+  margin: 0.5rem 0;
+}
+
+.timeline-date-start,
+.timeline-date-end {
+  position: absolute;
+  top: 0;
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+  font-family: monospace;
+}
+
+.timeline-date-start { left: 0; }
+.timeline-date-end   { right: 0; }
+
+.timeline-bar-outer {
+  position: relative;
+  height: 10px;
+  background: rgba(255, 255, 255, 0.07);
+  border-radius: 999px;
+  overflow: visible;
+}
+
+.timeline-bar-inner {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent-blue), #10b981);
+  border-radius: 999px;
+  transition: width 0.5s ease;
+  position: relative;
+}
+
+.timeline-now-marker {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 16px;
+  height: 16px;
+  background: #fff;
+  border: 3px solid var(--accent-blue);
+  border-radius: 50%;
+  box-shadow: 0 0 10px rgba(56, 189, 248, 0.6);
+  cursor: default;
+}
+
+.timeline-pip {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid rgba(0, 0, 0, 0.4);
+  cursor: pointer;
+  z-index: 2;
+}
+
+.timeline-pip-label {
+  position: absolute;
+  top: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.6rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  background: rgba(0, 0, 0, 0.5);
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+  pointer-events: none;
+}
+
+/* ==========================================
+   RECORD PANEL LIST CARDS
+   ========================================== */
+
+.rp-list-card {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 0.5rem;
+  padding: 0.75rem 1rem;
+}
+
+.rp-add-form {
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 0.6rem;
+  padding: 1rem;
+  margin-top: 0.5rem;
+}
+
+.rp-save-btn {
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.15), rgba(56, 189, 248, 0.08));
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  color: var(--accent-blue);
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 0.5rem 1.25rem;
+  border-radius: 0.4rem;
+  cursor: pointer;
+  margin-top: 0.75rem;
+  width: 100%;
+  letter-spacing: 0.03em;
+  transition: all 0.2s ease;
+}
+
+.rp-save-btn:hover {
+  background: rgba(56, 189, 248, 0.2);
+  border-color: rgba(56, 189, 248, 0.5);
+  color: #fff;
+  box-shadow: 0 0 12px rgba(56, 189, 248, 0.2);
+}
+
+/* Alloc timeline date grid */
+.alloc-timeline-dates {
+  display: grid;
+}
+
+/* Instrument Selector Toggle Styling */
+.instrument-selector {
+  display: flex;
+  gap: 0.25rem;
+  background: rgba(0, 0, 0, 0.25);
+  padding: 0.25rem;
+  border-radius: 0.4rem;
+  border: 1px solid var(--glass-border);
+  margin-bottom: 0.75rem;
+}
+
+.instrument-selector .tab-btn {
+  flex: 1;
+  text-align: center;
+  padding: 0.35rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  border-radius: 0.25rem;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.instrument-selector .tab-btn.active.futures-active {
+  background: rgba(56, 189, 248, 0.15) !important;
+  border-color: rgba(56, 189, 248, 0.3) !important;
+  color: var(--accent-blue) !important;
+}
+
+.instrument-selector .tab-btn.active.stock-active {
+  background: rgba(56, 189, 248, 0.15) !important;
+  border-color: rgba(56, 189, 248, 0.3) !important;
+  color: var(--accent-blue) !important;
+}
+
+/* IPO Simulation styling */
+.ipo-card {
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 0.5rem;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.ipo-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  padding-bottom: 0.5rem;
+}
+
+.ipo-status-pill {
+  font-size: 0.65rem;
+  padding: 2px 8px;
+  border-radius: 4px;
+  border: 1px solid;
+  font-weight: 700;
+}
+
+.ipo-card-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.75rem;
+}
+
+.ipo-stat {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.03);
+  padding: 0.5rem;
+  border-radius: 0.35rem;
+}
+
+.ipo-stat-label {
+  font-size: 0.55rem;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  margin-bottom: 2px;
+}
+
+.ipo-stat-value {
+  font-size: 0.85rem;
+  font-weight: 700;
+  font-family: monospace;
+}
+
+.ipo-funding-breakdown {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.03);
+  padding: 0.6rem;
+  border-radius: 0.35rem;
+}
+
+.ipo-funding-bar {
+  display: flex;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 3px;
+  overflow: hidden;
+  height: 8px;
+  margin-top: 4px;
+}
+
+.ipo-bar-fed {
+  background: linear-gradient(90deg, #3b82f6, #60a5fa);
+}
+
+.ipo-bar-state {
+  background: linear-gradient(90deg, #f59e0b, #fbbf24);
+}
+
+.ipo-launch-btn {
+  width: 100%;
+  padding: 0.5rem;
+  font-weight: 700;
+  background: linear-gradient(135deg, var(--accent-gold), #fbbf24);
+  color: #000;
+  border: none;
+  border-radius: 0.35rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-top: 8px;
+}
+
+.ipo-launch-btn:hover:not(:disabled) {
+  opacity: 0.9;
+  transform: translateY(-1px);
+  box-shadow: 0 0 10px rgba(245, 158, 11, 0.3);
+}
+
+.ipo-launch-btn:disabled {
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.3);
+  cursor: not-allowed;
+}
+
+/* Event log style */
+.ipo-log-container {
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+}
+
+.ipo-log-panel {
+  flex: 1;
+  overflow-y: auto;
+  font-family: monospace;
+  font-size: 0.65rem;
+  line-height: 1.4;
+  height: 175px;
+  padding-right: 4px;
+}
+
+.ipo-log-entry {
+  padding: 3px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.02);
+}
+
+.ipo-log-start {
+  color: var(--accent-blue);
+  border-bottom: 1px solid rgba(59, 130, 246, 0.2);
+  padding-bottom: 4px;
+}
+
+.ipo-log-fed {
+  color: #60a5fa;
+}
+
+.ipo-log-state {
+  color: #fbbf24;
+}
+
+.ipo-log-book {
+  color: #a78bfa;
+}
+
+.ipo-log-complete {
+  color: #10b981;
+  border-top: 1px solid rgba(16, 185, 129, 0.2);
+  padding-top: 4px;
+}
+
+.ipo-highlight {
+  color: var(--accent-gold);
+  font-weight: bold;
+}
+
+.ipo-floor {
+  color: rgba(255, 255, 255, 0.4);
+  text-decoration: line-through;
+}
+
+/* Table elements */
+.ipo-states-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.ipo-states-table th {
+  padding: 0.6rem 0.5rem;
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  font-weight: 700;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  background: #111;
+}
+
+.ipo-states-table td {
+  padding: 0.5rem 0.5rem;
+  font-size: 0.7rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.02);
+}
+
+.ipo-table-row:hover {
+  background: rgba(255, 255, 255, 0.01);
+}
+
+.ipo-badge {
+  font-size: 0.55rem;
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-weight: bold;
+}
+
+.ipo-badge-pending {
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.ipo-badge-running {
+  background: rgba(245, 158, 11, 0.1);
+  color: var(--accent-gold);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+}
+
+.ipo-badge-complete {
+  background: rgba(16, 185, 129, 0.1);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.25);
+}
+
+.ipo-progress-track {
+  background: rgba(255, 255, 255, 0.05);
+  height: 4px;
+  border-radius: 2px;
+  overflow: hidden;
+  width: 100%;
+}
+
+.ipo-progress-fill {
+  background: linear-gradient(90deg, var(--accent-blue), var(--accent-gold));
+  height: 100%;
+  width: 0%;
+  transition: width 0.1s linear;
+}
+
+.ipo-main-progress-track {
+  background: rgba(255, 255, 255, 0.05);
+  height: 6px;
+  border-radius: 3px;
+  overflow: hidden;
+  width: 100%;
+}
+
+.ipo-main-progress-fill {
+  background: linear-gradient(90deg, var(--accent-blue), #fbbf24, #10b981);
+  height: 100%;
+  width: 0%;
+  transition: width 0.1s linear;
+}
+
+.ipo-run-btn {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #fff;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.6rem;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.ipo-run-btn:hover:not(:disabled) {
+  background: var(--accent-gold);
+  border-color: var(--accent-gold);
+  color: #000;
+}
+
+.ipo-run-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.ipo-global-btn {
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.ipo-global-btn-run {
+  background: linear-gradient(135deg, var(--accent-gold), #fbbf24);
+  color: #000;
+  border: none;
+}
+
+.ipo-global-btn-run:hover {
+  opacity: 0.9;
+  box-shadow: 0 0 8px rgba(245, 158, 11, 0.2);
+}
+
+.ipo-global-btn-reset {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+.ipo-global-btn-reset:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+@keyframes ipo-log-appear {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
 
 
