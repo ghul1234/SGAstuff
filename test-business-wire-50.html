@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Business Wire 90-Day News Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            border-bottom: 2px solid #007bff;
+            padding-bottom: 10px;
+        }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+        .stat-card {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 6px;
+            border-left: 4px solid #007bff;
+        }
+        .stat-card h3 {
+            margin: 0 0 10px 0;
+            color: #666;
+            font-size: 14px;
+        }
+        .stat-card .value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #333;
+        }
+        .articles {
+            margin-top: 20px;
+        }
+        .article {
+            background: #fff;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            padding: 15px;
+            margin-bottom: 15px;
+            transition: box-shadow 0.2s;
+        }
+        .article:hover {
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        .article-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 10px;
+        }
+        .article-title {
+            font-size: 18px;
+            font-weight: bold;
+            color: #333;
+            flex: 1;
+        }
+        .article-meta {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+        .state-badge {
+            background: #007bff;
+            color: white;
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        .date-badge {
+            background: #6c757d;
+            color: white;
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+        }
+        .article-description {
+            color: #666;
+            line-height: 1.5;
+            margin-bottom: 10px;
+        }
+        .article-link {
+            color: #007bff;
+            text-decoration: none;
+            font-size: 14px;
+        }
+        .article-link:hover {
+            text-decoration: underline;
+        }
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 20px 0;
+        }
+        .state-distribution {
+            margin-top: 20px;
+        }
+        .state-bar {
+            display: flex;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+        .state-label {
+            width: 40px;
+            font-weight: bold;
+            color: #333;
+        }
+        .bar-container {
+            flex: 1;
+            background: #e9ecef;
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 0 10px;
+        }
+        .bar {
+            height: 20px;
+            background: #007bff;
+            border-radius: 4px;
+            transition: width 0.3s;
+        }
+        .count {
+            width: 30px;
+            text-align: right;
+            color: #666;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 0;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Business Wire News (Past 50 Days)</h1>
+        
+        <button id="fetchBtn" onclick="fetchNews()">Fetch News</button>
+        
+        <div id="loading" class="loading" style="display: none;">
+            Loading news from Business Wire...
+        </div>
+        
+        <div id="error" class="error" style="display: none;"></div>
+        
+        <div id="stats" class="stats" style="display: none;">
+            <div class="stat-card">
+                <h3>Total Articles</h3>
+                <div class="value" id="totalArticles">0</div>
+            </div>
+            <div class="stat-card">
+                <h3>States Covered</h3>
+                <div class="value" id="statesCovered">0</div>
+            </div>
+            <div class="stat-card">
+                <h3>Date Range</h3>
+                <div class="value">50 Days</div>
+            </div>
+        </div>
+        
+        <div id="stateDistribution" class="state-distribution" style="display: none;">
+            <h2>State Distribution</h2>
+            <div id="stateBars"></div>
+        </div>
+        
+        <div id="articles" class="articles"></div>
+    </div>
+
+    <script type="module">
+        async function fetchNews() {
+            const fetchBtn = document.getElementById('fetchBtn');
+            const loading = document.getElementById('loading');
+            const error = document.getElementById('error');
+            const stats = document.getElementById('stats');
+            const stateDistribution = document.getElementById('stateDistribution');
+            const articles = document.getElementById('articles');
+            
+            fetchBtn.disabled = true;
+            loading.style.display = 'block';
+            error.style.display = 'none';
+            stats.style.display = 'none';
+            stateDistribution.style.display = 'none';
+            articles.innerHTML = '';
+            
+            try {
+                // Use the proxy server to fetch Business Wire RSS
+                const businessWireUrl = 'https://feed.businesswire.com/rss/home/?rss=G1QFDERJXkJeEFtRWA==';
+                const proxyUrl = `http://localhost:3001/proxy?url=${encodeURIComponent(businessWireUrl)}`;
+                
+                const response = await fetch(proxyUrl);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const rssText = await response.text();
+                
+                // Parse XML
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(rssText, 'text/xml');
+                const items = doc.querySelectorAll('item');
+                
+                // Filter by date range (past 90 days for testing)
+                const cutoffDate = new Date();
+                cutoffDate.setDate(cutoffDate.getDate() - 90);
+                
+                const filteredItems = Array.from(items).filter(item => {
+                    const pubDateEl = item.querySelector('pubDate');
+                    if (pubDateEl) {
+                        const articleDate = new Date(pubDateEl.textContent);
+                        return articleDate >= cutoffDate;
+                    }
+                    return true;
+                });
+                
+                // State detection function
+                function isEnglishContent(text) {
+                  // Strict English language detection
+                  const lowerText = text.toLowerCase();
+                  
+                  // Check for non-English character patterns and common non-English words
+                  const nonEnglishIndicators = [
+                    ' se unirá à ', ' schließt sich ', ' voegt zich bij ', ' entrerà a far parte ', 
+                    ' accélère l', ' accelera l', ' treibt die ', ' versnelt de ', ' se unirá a',
+                    ' reforçando ', ' unterstreicht ', ' rafforzando ', ' impegno sul ', ' compromisso de',
+                    ' funktionären ', ' funzionerà ', ' fonctionnera ', ' funcionando ', '将继续', '将加入',
+                    ' agregará ', ' añadirá ', ' hinzufügen ', ' ajoutera ', ' aggiungerà '
+                  ];
+                  
+                  // If any non-English patterns are found, it's not English
+                  for (const pattern of nonEnglishIndicators) {
+                    if (lowerText.includes(pattern)) {
+                      return false;
+                    }
+                  }
+                  
+                  // Check for non-ASCII characters that indicate non-English text
+                  const nonAsciiPattern = /[àáâãäåæçèéêëìíîïðñòóôõöøùúûüýÿß]/;
+                  if (nonAsciiPattern.test(text)) {
+                    // If it has accented characters, it's likely not English
+                    return false;
+                  }
+                  
+                  // Check for common English words and patterns
+                  const englishIndicators = [
+                    'the', 'and', 'is', 'in', 'to', 'of', 'a', 'for', 'on', 'with', 'as', 'at', 'by',
+                    'from', 'company', 'corporation', 'inc', 'ltd', 'llc', 'business', 'announces',
+                    'said', 'will', 'has', 'been', 'have', 'this', 'that', 'are', 'was', 'were'
+                  ];
+                  
+                  const englishWordCount = englishIndicators.filter(word => lowerText.includes(word)).length;
+                  
+                  // If it has several common English words, consider it English
+                  return englishWordCount >= 3;
+                }
+
+                function isUnitedStatesArticle(title, description) {
+                  const content = `${title} ${description || ''}`.toLowerCase();
+                  
+                  // Check for "United States" or "U.S." references
+                  const usPatterns = [
+                    'united states',
+                    'u.s.',
+                    'us',
+                    'usa',
+                    'nationwide',
+                    'across the country',
+                    'throughout the united states'
+                  ];
+                  
+                  return usPatterns.some(pattern => content.includes(pattern));
+                }
+
+                function detectStateFromContent(title, description) {
+                    const content = `${title} ${description || ''}`.toLowerCase();
+                    
+                    const stateNames = {
+                        'alabama': 'AL', 'alaska': 'AK', 'arizona': 'AZ', 'arkansas': 'AR', 'california': 'CA',
+                        'colorado': 'CO', 'connecticut': 'CT', 'delaware': 'DE', 'florida': 'FL', 'georgia': 'GA',
+                        'hawaii': 'HI', 'idaho': 'ID', 'illinois': 'IL', 'indiana': 'IN', 'iowa': 'IA',
+                        'kansas': 'KS', 'kentucky': 'KY', 'louisiana': 'LA', 'maine': 'ME', 'maryland': 'MD',
+                        'massachusetts': 'MA', 'michigan': 'MI', 'minnesota': 'MN', 'mississippi': 'MS', 'missouri': 'MO',
+                        'montana': 'MT', 'nebraska': 'NE', 'nevada': 'NV', 'new hampshire': 'NH', 'new jersey': 'NJ',
+                        'new mexico': 'NM', 'new york': 'NY', 'north carolina': 'NC', 'north dakota': 'ND',
+                        'ohio': 'OH', 'oklahoma': 'OK', 'oregon': 'OR', 'pennsylvania': 'PA', 'rhode island': 'RI',
+                        'south carolina': 'SC', 'south dakota': 'SD', 'tennessee': 'TN', 'texas': 'TX', 'utah': 'UT',
+                        'vermont': 'VT', 'virginia': 'VA', 'washington': 'WA', 'west virginia': 'WV', 'wisconsin': 'WI', 'wyoming': 'WY'
+                    };
+                    
+                    for (const [stateName, stateId] of Object.entries(stateNames)) {
+                        if (content.includes(stateName)) {
+                            return stateId;
+                        }
+                    }
+                    
+                    const majorCities = {
+                        'birmingham': 'AL', 'montgomery': 'AL', 'mobile': 'AL',
+                        'anchorage': 'AK', 'fairbanks': 'AK',
+                        'phoenix': 'AZ', 'tucson': 'AZ', 'mesa': 'AZ',
+                        'little rock': 'AR', 'fort smith': 'AR',
+                        'los angeles': 'CA', 'san francisco': 'CA', 'san diego': 'CA', 'sacramento': 'CA',
+                        'denver': 'CO', 'colorado springs': 'CO',
+                        'hartford': 'CT', 'new haven': 'CT',
+                        'wilmington': 'DE',
+                        'miami': 'FL', 'tampa': 'FL', 'orlando': 'FL', 'jacksonville': 'FL',
+                        'atlanta': 'GA', 'savannah': 'GA',
+                        'honolulu': 'HI',
+                        'boise': 'ID',
+                        'chicago': 'IL', 'aurora': 'IL',
+                        'indianapolis': 'IN', 'fort wayne': 'IN',
+                        'des moines': 'IA',
+                        'wichita': 'KS', 'kansas city': 'KS',
+                        'louisville': 'KY', 'lexington': 'KY',
+                        'new orleans': 'LA', 'baton rouge': 'LA',
+                        'portland': 'ME', 'lewiston': 'ME',
+                        'baltimore': 'MD',
+                        'boston': 'MA', 'worcester': 'MA',
+                        'detroit': 'MI', 'grand rapids': 'MI',
+                        'minneapolis': 'MN', 'saint paul': 'MN',
+                        'jackson': 'MS',
+                        'kansas city': 'MO', 'st. louis': 'MO',
+                        'billings': 'MT', 'missoula': 'MT',
+                        'omaha': 'NE', 'lincoln': 'NE',
+                        'las vegas': 'NV', 'reno': 'NV',
+                        'manchester': 'NH',
+                        'newark': 'NJ', 'jersey city': 'NJ',
+                        'albuquerque': 'NM',
+                        'new york city': 'NY', 'buffalo': 'NY', 'rochester': 'NY',
+                        'charlotte': 'NC', 'raleigh': 'NC',
+                        'fargo': 'ND', 'bismarck': 'ND',
+                        'columbus': 'OH', 'cleveland': 'OH', 'cincinnati': 'OH',
+                        'oklahoma city': 'OK', 'tulsa': 'OK',
+                        'portland': 'OR', 'eugene': 'OR',
+                        'philadelphia': 'PA', 'pittsburgh': 'PA',
+                        'providence': 'RI',
+                        'charleston': 'SC', 'columbia': 'SC',
+                        'sioux falls': 'SD', 'rapid city': 'SD',
+                        'nashville': 'TN', 'memphis': 'TN',
+                        'houston': 'TX', 'san antonio': 'TX', 'dallas': 'TX', 'austin': 'TX',
+                        'salt lake city': 'UT',
+                        'burlington': 'VT',
+                        'virginia beach': 'VA', 'norfolk': 'VA', 'richmond': 'VA',
+                        'seattle': 'WA', 'spokane': 'WA',
+                        'charleston': 'WV',
+                        'milwaukee': 'WI', 'madison': 'WI',
+                        'cheyenne': 'WY'
+                    };
+                    
+                    for (const [city, stateId] of Object.entries(majorCities)) {
+                        if (content.includes(city)) {
+                            return stateId;
+                        }
+                    }
+                    
+                    const abbreviationPattern = /\b(AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY)\b[.,]?/g;
+                    
+                    const matches = content.match(abbreviationPattern);
+                    if (matches) {
+                        return matches[0].replace(/[.,]/g, '').toUpperCase();
+                    }
+                    
+                    return null;
+                }
+                
+                // Additional filters: English language, US regions, and job-related keywords
+                const keywordFilteredItems = filteredItems.filter(item => {
+                    const title = item.querySelector('title')?.textContent || '';
+                    const description = item.querySelector('description')?.textContent || '';
+                    const combinedText = `${title} ${description}`.toLowerCase();
+                    
+                    // Check for job-related keywords in headline or body
+                    const jobKeywords = ['jobs'];
+                    const hasJobsKeyword = jobKeywords.some(keyword => combinedText.includes(keyword));
+                    
+                    // Check for US region references (state detection for US regions)
+                    const hasUSRegion = detectStateFromContent(title, description) !== null;
+                    
+                    // Check if content is in English
+                    const isEnglish = isEnglishContent(combinedText);
+                    
+                    return hasJobsKeyword && hasUSRegion && isEnglish;
+                });
+                
+                // If no job-related articles found, use broader filter for testing (English + US regions only)
+                let finalFilteredItems = keywordFilteredItems;
+                if (keywordFilteredItems.length === 0) {
+                    console.log('No articles with "jobs" keyword found, using broader filter (English + US regions only) for testing');
+                    finalFilteredItems = filteredItems.filter(item => {
+                        const title = item.querySelector('title')?.textContent || '';
+                        const description = item.querySelector('description')?.textContent || '';
+                        const combinedText = `${title} ${description}`.toLowerCase();
+                        
+                        const hasUSRegion = detectStateFromContent(title, description) !== null;
+                        const isEnglish = isEnglishContent(combinedText);
+                        
+                        return hasUSRegion && isEnglish;
+                    });
+                }
+                
+                console.log(`After filtering for English, US regions, and 'jobs' keyword: ${keywordFilteredItems.length} articles`);
+                console.log(`Final filtered count (with fallback): ${finalFilteredItems.length} articles`);
+                
+                // Detect states and filter
+                const stateDetectedArticles = finalFilteredItems.map(item => {
+                    const title = item.querySelector('title')?.textContent;
+                    const link = item.querySelector('link')?.textContent;
+                    const description = item.querySelector('description')?.textContent;
+                    const pubDate = item.querySelector('pubDate')?.textContent;
+                    const detectedState = detectStateFromContent(title, description);
+                    
+                    return {
+                        title,
+                        link,
+                        description,
+                        pubDate,
+                        stateId: detectedState || 'US',
+                        detectedState: detectedState || null
+                    };
+                }).filter(article => article.stateId !== 'US');
+                
+                // Update stats
+                document.getElementById('totalArticles').textContent = stateDetectedArticles.length;
+                document.getElementById('statesCovered').textContent = new Set(stateDetectedArticles.map(a => a.stateId)).size;
+                
+                // State distribution
+                const stateCounts = {};
+                stateDetectedArticles.forEach(article => {
+                    stateCounts[article.stateId] = (stateCounts[article.stateId] || 0) + 1;
+                });
+                
+                const maxCount = Math.max(...Object.values(stateCounts));
+                const stateBarsHtml = Object.entries(stateCounts)
+                    .sort((a, b) => b[1] - a[1])
+                    .map(([state, count]) => {
+                        const percentage = (count / maxCount) * 100;
+                        return `
+                            <div class="state-bar">
+                                <div class="state-label">${state}</div>
+                                <div class="bar-container">
+                                    <div class="bar" style="width: ${percentage}%"></div>
+                                </div>
+                                <div class="count">${count}</div>
+                            </div>
+                        `;
+                    }).join('');
+                
+                document.getElementById('stateBars').innerHTML = stateBarsHtml;
+                
+                // Display articles
+                const articlesHtml = stateDetectedArticles.slice(0, 20).map(article => {
+                    const date = article.pubDate ? new Date(article.pubDate).toLocaleDateString() : 'N/A';
+                    const description = article.description ? article.description.replace(/<[^>]*>/g, '').substring(0, 200) + '...' : 'No description available';
+                    
+                    return `
+                        <div class="article">
+                            <div class="article-header">
+                                <div class="article-title">${article.title}</div>
+                            </div>
+                            <div class="article-meta">
+                                <span class="state-badge">${article.stateId}</span>
+                                <span class="date-badge">${date}</span>
+                            </div>
+                            <div class="article-description">${description}</div>
+                            <a href="${article.link}" target="_blank" class="article-link">Read more →</a>
+                        </div>
+                    `;
+                }).join('');
+                
+                articles.innerHTML = articlesHtml;
+                
+                stats.style.display = 'grid';
+                stateDistribution.style.display = 'block';
+                
+            } catch (err) {
+                error.textContent = `Error: ${err.message}`;
+                error.style.display = 'block';
+            } finally {
+                loading.style.display = 'none';
+                fetchBtn.disabled = false;
+            }
+        }
+        
+        // Make function globally accessible
+        window.fetchNews = fetchNews;
+    </script>
+</body>
+</html>

@@ -1,0 +1,1036 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SGA Stock Market Screener</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #050a14;
+            --panel-bg: rgba(15, 23, 42, 0.7);
+            --panel-dark: rgba(10, 17, 34, 0.9);
+            --accent-gold: #fbbf24;
+            --accent-blue: #38bdf8;
+            --accent-green: #10b981;
+            --accent-red: #ef4444;
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --text-faint: #64748b;
+            --glass-border: rgba(255, 255, 255, 0.1);
+            --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-primary);
+            line-height: 1.6;
+            min-height: 100vh;
+            background: 
+                radial-gradient(1200px 600px at 15% -10%, rgba(251, 191, 36, 0.08), transparent 60%),
+                radial-gradient(900px 500px at 100% 0%, rgba(56, 189, 248, 0.06), transparent 55%),
+                var(--bg-color);
+        }
+
+        .screener-container {
+            max-width: 1600px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        .screener-header {
+            margin-bottom: 2rem;
+            padding-bottom: 1.5rem;
+            border-bottom: 1px solid var(--glass-border);
+        }
+
+        .screener-title {
+            font-size: 2.5rem;
+            font-weight: 900;
+            background: linear-gradient(to right, var(--accent-gold), #fff);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 0.5rem;
+            letter-spacing: -0.02em;
+        }
+
+        .screener-subtitle {
+            color: var(--text-secondary);
+            font-size: 1rem;
+            max-width: 600px;
+        }
+
+        .screener-controls {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .search-box {
+            flex: 1;
+            min-width: 300px;
+            position: relative;
+        }
+
+        .search-box input {
+            width: 100%;
+            padding: 0.75rem 1rem 0.75rem 2.5rem;
+            background: var(--panel-bg);
+            border: 1px solid var(--glass-border);
+            border-radius: 0.5rem;
+            color: var(--text-primary);
+            font-family: inherit;
+            font-size: 0.9rem;
+            backdrop-filter: blur(12px);
+            transition: var(--transition);
+        }
+
+        .search-box input:focus {
+            outline: none;
+            border-color: var(--accent-blue);
+            box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.2);
+        }
+
+        .search-box::before {
+            content: "🔍";
+            position: absolute;
+            left: 0.75rem;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 0.9rem;
+            opacity: 0.6;
+        }
+
+        .filter-btn {
+            padding: 0.6rem 1rem;
+            background: var(--panel-bg);
+            border: 1px solid var(--glass-border);
+            border-radius: 0.5rem;
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: var(--transition);
+            backdrop-filter: blur(12px);
+        }
+
+        .filter-btn:hover {
+            background: rgba(255, 255, 255, 0.05);
+            border-color: var(--accent-blue);
+            color: var(--text-primary);
+        }
+
+        .filter-btn.active {
+            background: rgba(56, 189, 248, 0.15);
+            border-color: var(--accent-blue);
+            color: var(--accent-blue);
+        }
+
+        .screener-table-container {
+            background: var(--panel-bg);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--glass-border);
+            border-radius: 1rem;
+            overflow: hidden;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        }
+
+        .screener-table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+        }
+
+        .screener-table thead {
+            background: var(--panel-dark);
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+
+        .screener-table th {
+            padding: 1rem 0.75rem;
+            text-align: right;
+            font-size: 0.7rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            color: var(--text-faint);
+            letter-spacing: 0.08em;
+            border-bottom: 2px solid var(--glass-border);
+            cursor: pointer;
+            transition: var(--transition);
+            white-space: nowrap;
+        }
+
+        .screener-table th:hover {
+            color: var(--accent-blue);
+            background: rgba(56, 189, 248, 0.05);
+        }
+
+        .screener-table th:first-child {
+            text-align: left;
+            padding-left: 1.25rem;
+        }
+
+        .screener-table td {
+            padding: 0.85rem 0.75rem;
+            text-align: right;
+            border-bottom: 1px solid var(--glass-border);
+            font-size: 0.9rem;
+            transition: var(--transition);
+        }
+
+        .screener-table td:first-child {
+            text-align: left;
+            padding-left: 1.25rem;
+        }
+
+        .screener-table tbody tr {
+            transition: background-color 0.2s ease;
+        }
+
+        .screener-table tbody tr:hover {
+            background: rgba(255, 255, 255, 0.03);
+        }
+
+        .ticker-cell {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .ticker-symbol {
+            font-weight: 700;
+            font-size: 0.95rem;
+            color: var(--text-primary);
+        }
+
+        .ticker-name {
+            color: var(--text-secondary);
+            font-size: 0.8rem;
+            max-width: 200px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .price-cell {
+            font-family: 'IBM Plex Mono', monospace;
+            font-weight: 600;
+            font-size: 0.95rem;
+        }
+
+        .change-cell {
+            font-family: 'IBM Plex Mono', monospace;
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+
+        .change-positive {
+            color: var(--accent-green);
+        }
+
+        .change-negative {
+            color: var(--accent-red);
+        }
+
+        .rvol-cell {
+            font-family: 'IBM Plex Mono', monospace;
+            font-weight: 600;
+            font-size: 0.85rem;
+            padding: 0.25rem 0.5rem;
+            border-radius: 0.25rem;
+            background: rgba(255, 255, 255, 0.03);
+        }
+
+        .rvol-high {
+            background: rgba(16, 185, 129, 0.15);
+            color: var(--accent-green);
+        }
+
+        .rvol-medium {
+            background: rgba(251, 191, 36, 0.15);
+            color: var(--accent-gold);
+        }
+
+        .rvol-low {
+            background: rgba(239, 68, 68, 0.15);
+            color: var(--accent-red);
+        }
+
+        .delta-cell {
+            font-family: 'IBM Plex Mono', monospace;
+            font-weight: 600;
+            font-size: 0.85rem;
+        }
+
+        .delta-positive {
+            color: var(--accent-green);
+        }
+
+        .delta-negative {
+            color: var(--accent-red);
+        }
+
+        .percentage-cell {
+            font-family: 'IBM Plex Mono', monospace;
+            font-weight: 600;
+            font-size: 0.85rem;
+        }
+
+        .market-cap-cell {
+            font-family: 'IBM Plex Mono', monospace;
+            font-weight: 600;
+            font-size: 0.9rem;
+            color: var(--text-primary);
+        }
+
+        .float-cell {
+            font-family: 'IBM Plex Mono', monospace;
+            font-weight: 600;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+
+        .volume-cell {
+            font-family: 'IBM Plex Mono', monospace;
+            font-weight: 600;
+            font-size: 0.85rem;
+            color: var(--text-primary);
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 0.2rem 0.5rem;
+            border-radius: 0.25rem;
+            font-size: 0.7rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .badge-hot {
+            background: rgba(239, 68, 68, 0.2);
+            color: var(--accent-red);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+
+        .badge-trending {
+            background: rgba(251, 191, 36, 0.2);
+            color: var(--accent-gold);
+            border: 1px solid rgba(251, 191, 36, 0.3);
+        }
+
+        .badge-stable {
+            background: rgba(56, 189, 248, 0.2);
+            color: var(--accent-blue);
+            border: 1px solid rgba(56, 189, 248, 0.3);
+        }
+
+        .stats-bar {
+            display: flex;
+            gap: 2rem;
+            margin-bottom: 1.5rem;
+            flex-wrap: wrap;
+        }
+
+        .stat-item {
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+        }
+
+        .stat-label {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            color: var(--text-faint);
+            letter-spacing: 0.08em;
+        }
+
+        .stat-value {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        .stat-value.gold {
+            color: var(--accent-gold);
+        }
+
+        .stat-value.green {
+            color: var(--accent-green);
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .live-indicator {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            background: var(--accent-green);
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+            margin-right: 0.5rem;
+        }
+
+        .table-wrapper {
+            max-height: 800px;
+            overflow-y: auto;
+        }
+
+        .table-wrapper::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .table-wrapper::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 4px;
+        }
+
+        .table-wrapper::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+        }
+
+        .table-wrapper::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .sort-icon {
+            display: inline-block;
+            margin-left: 0.25rem;
+            font-size: 0.7rem;
+            opacity: 0.5;
+        }
+
+        .sort-icon.active {
+            opacity: 1;
+            color: var(--accent-blue);
+        }
+
+        @media (max-width: 1200px) {
+            .screener-table {
+                font-size: 0.8rem;
+            }
+            
+            .screener-table th,
+            .screener-table td {
+                padding: 0.6rem 0.5rem;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .screener-container {
+                padding: 1rem;
+            }
+            
+            .screener-title {
+                font-size: 1.8rem;
+            }
+            
+            .screener-controls {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            
+            .stats-bar {
+                gap: 1rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="screener-container">
+        <div class="screener-header">
+            <h1 class="screener-title">SGA Stock Market Screener</h1>
+            <p class="screener-subtitle">Real-time market data with advanced metrics including RVOL, Delta, and institutional flow analysis</p>
+        </div>
+
+        <div class="stats-bar">
+            <div class="stat-item">
+                <span class="stat-label">Total Stocks</span>
+                <span class="stat-value" id="total-stocks">0</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">Avg Monthly RVOL</span>
+                <span class="stat-value gold" id="avg-monthly-rvol">0.00x</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">Avg 5min RVOL</span>
+                <span class="stat-value" id="avg-5min-rvol">0.00x</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">Gainers</span>
+                <span class="stat-value green" id="total-gainers">0</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">Losers</span>
+                <span class="stat-value" style="color: var(--accent-red);" id="total-losers">0</span>
+            </div>
+        </div>
+
+        <div class="screener-controls">
+            <div class="search-box">
+                <input type="text" id="search-input" placeholder="Search by ticker or company name...">
+            </div>
+            <button class="filter-btn active" data-filter="all">All Stocks</button>
+            <button class="filter-btn" data-filter="hot">🔥 Hot (RVOL > 2x)</button>
+            <button class="filter-btn" data-filter="trending">📈 Trending (Delta > 0)</button>
+            <button class="filter-btn" data-filter="high-mcap">Large Cap ($10B+)</button>
+            <button class="filter-btn" data-filter="low-float">Low Float (< 50M)</button>
+        </div>
+
+        <div class="screener-table-container">
+            <div class="table-wrapper">
+                <table class="screener-table">
+                    <thead>
+                        <tr>
+                            <th onclick="sortTable('ticker')">Ticker <span class="sort-icon" id="sort-ticker">↕</span></th>
+                            <th onclick="sortTable('price')">Price <span class="sort-icon" id="sort-price">↕</span></th>
+                            <th onclick="sortTable('change')">Change % <span class="sort-icon" id="sort-change">↕</span></th>
+                            <th onclick="sortTable('monthlyRvol')">Monthly RVOL <span class="sort-icon" id="sort-monthlyRvol">↕</span></th>
+                            <th onclick="sortTable('fiveMinRvol')">5min RVOL <span class="sort-icon" id="sort-fiveMinRvol">↕</span></th>
+                            <th onclick="sortTable('fiveMinDelta')">5min Delta <span class="sort-icon" id="sort-fiveMinDelta">↕</span></th>
+                            <th onclick="sortTable('marketCap')">Market Cap <span class="sort-icon" id="sort-marketCap">↕</span></th>
+                            <th onclick="sortTable('float')">Float <span class="sort-icon" id="sort-float">↕</span></th>
+                            <th onclick="sortTable('volume')">Volume <span class="sort-icon" id="sort-volume">↕</span></th>
+                            <th onclick="sortTable('volumePercentage')">Vol % <span class="sort-icon" id="sort-volumePercentage">↕</span></th>
+                        </tr>
+                    </thead>
+                    <tbody id="screener-body">
+                        <!-- Data will be populated by JavaScript -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Mock SGA stock data with realistic market metrics
+        const sgaStocks = [
+            {
+                ticker: 'SGA-US',
+                name: 'United States SGA',
+                price: 432500.00,
+                change: 2.34,
+                monthlyRvol: 1.85,
+                fiveMinRvol: 2.45,
+                fiveMinDelta: 1250000,
+                marketCap: 43250000000000,
+                float: 100000000000,
+                volume: 45678900000,
+                volumePercentage: 0.0456789
+            },
+            {
+                ticker: 'SGA-CN',
+                name: 'China SGA',
+                price: 371000.00,
+                change: -1.23,
+                monthlyRvol: 1.45,
+                fiveMinRvol: 1.85,
+                fiveMinDelta: -890000,
+                marketCap: 37100000000000,
+                float: 100000000000,
+                volume: 34567800000,
+                volumePercentage: 0.0345678
+            },
+            {
+                ticker: 'SGA-DE',
+                name: 'Germany SGA',
+                price: 284500.00,
+                change: 1.87,
+                monthlyRvol: 1.92,
+                fiveMinRvol: 2.15,
+                fiveMinDelta: 567000,
+                marketCap: 28450000000000,
+                float: 100000000000,
+                volume: 23456700000,
+                volumePercentage: 0.0234567
+            },
+            {
+                ticker: 'SGA-JP',
+                name: 'Japan SGA',
+                price: 257800.00,
+                change: 0.92,
+                monthlyRvol: 1.34,
+                fiveMinRvol: 1.67,
+                fiveMinDelta: 234000,
+                marketCap: 25780000000000,
+                float: 100000000000,
+                volume: 18901200000,
+                volumePercentage: 0.0189012
+            },
+            {
+                ticker: 'SGA-GB',
+                name: 'United Kingdom SGA',
+                price: 198500.00,
+                change: -0.45,
+                monthlyRvol: 1.12,
+                fiveMinRvol: 1.34,
+                fiveMinDelta: -123000,
+                marketCap: 19850000000000,
+                float: 100000000000,
+                volume: 15678900000,
+                volumePercentage: 0.0156789
+            },
+            {
+                ticker: 'SGA-IN',
+                name: 'India SGA',
+                price: 145600.00,
+                change: 3.21,
+                monthlyRvol: 2.34,
+                fiveMinRvol: 3.12,
+                fiveMinDelta: 890000,
+                marketCap: 14560000000000,
+                float: 100000000000,
+                volume: 12345600000,
+                volumePercentage: 0.0123456
+            },
+            {
+                ticker: 'SGA-FR',
+                name: 'France SGA',
+                price: 134500.00,
+                change: 1.45,
+                monthlyRvol: 1.56,
+                fiveMinRvol: 1.89,
+                fiveMinDelta: 345000,
+                marketCap: 13450000000000,
+                float: 100000000000,
+                volume: 10987600000,
+                volumePercentage: 0.0109876
+            },
+            {
+                ticker: 'SGA-IT',
+                name: 'Italy SGA',
+                price: 98700.00,
+                change: -2.12,
+                monthlyRvol: 1.78,
+                fiveMinRvol: 2.01,
+                fiveMinDelta: -456000,
+                marketCap: 9870000000000,
+                float: 100000000000,
+                volume: 8765400000,
+                volumePercentage: 0.0087654
+            },
+            {
+                ticker: 'SGA-CA',
+                name: 'Canada SGA',
+                price: 87600.00,
+                change: 0.87,
+                monthlyRvol: 1.23,
+                fiveMinRvol: 1.45,
+                fiveMinDelta: 178000,
+                marketCap: 8760000000000,
+                float: 100000000000,
+                volume: 7654300000,
+                volumePercentage: 0.0076543
+            },
+            {
+                ticker: 'SGA-KR',
+                name: 'South Korea SGA',
+                price: 76500.00,
+                change: 2.56,
+                monthlyRvol: 2.12,
+                fiveMinRvol: 2.67,
+                fiveMinDelta: 567000,
+                marketCap: 7650000000000,
+                float: 100000000000,
+                volume: 6543200000,
+                volumePercentage: 0.0065432
+            },
+            {
+                ticker: 'SGA-RU',
+                name: 'Russia SGA',
+                price: 65400.00,
+                change: -3.45,
+                monthlyRvol: 2.89,
+                fiveMinRvol: 3.45,
+                fiveMinDelta: -789000,
+                marketCap: 6540000000000,
+                float: 100000000000,
+                volume: 5432100000,
+                volumePercentage: 0.0054321
+            },
+            {
+                ticker: 'SGA-AU',
+                name: 'Australia SGA',
+                price: 54300.00,
+                change: 1.23,
+                monthlyRvol: 1.45,
+                fiveMinRvol: 1.78,
+                fiveMinDelta: 234000,
+                marketCap: 5430000000000,
+                float: 100000000000,
+                volume: 4321000000,
+                volumePercentage: 0.0043210
+            },
+            {
+                ticker: 'SGA-ES',
+                name: 'Spain SGA',
+                price: 43200.00,
+                change: -0.89,
+                monthlyRvol: 1.34,
+                fiveMinRvol: 1.56,
+                fiveMinDelta: -123000,
+                marketCap: 4320000000000,
+                float: 100000000000,
+                volume: 3210900000,
+                volumePercentage: 0.0032109
+            },
+            {
+                ticker: 'SGA-MX',
+                name: 'Mexico SGA',
+                price: 32100.00,
+                change: 1.67,
+                monthlyRvol: 1.67,
+                fiveMinRvol: 2.12,
+                fiveMinDelta: 345000,
+                marketCap: 3210000000000,
+                float: 100000000000,
+                volume: 2109800000,
+                volumePercentage: 0.0021098
+            },
+            {
+                ticker: 'SGA-ID',
+                name: 'Indonesia SGA',
+                price: 29800.00,
+                change: 2.34,
+                monthlyRvol: 1.89,
+                fiveMinRvol: 2.34,
+                fiveMinDelta: 456000,
+                marketCap: 2980000000000,
+                float: 100000000000,
+                volume: 1987600000,
+                volumePercentage: 0.0019876
+            },
+            {
+                ticker: 'SGA-NL',
+                name: 'Netherlands SGA',
+                price: 28700.00,
+                change: 0.56,
+                monthlyRvol: 1.12,
+                fiveMinRvol: 1.34,
+                fiveMinDelta: 89000,
+                marketCap: 2870000000000,
+                float: 100000000000,
+                volume: 1876500000,
+                volumePercentage: 0.0018765
+            },
+            {
+                ticker: 'SGA-SA',
+                name: 'Saudi Arabia SGA',
+                price: 27600.00,
+                change: 1.89,
+                monthlyRvol: 2.23,
+                fiveMinRvol: 2.89,
+                fiveMinDelta: 567000,
+                marketCap: 2760000000000,
+                float: 100000000000,
+                volume: 1765400000,
+                volumePercentage: 0.0017654
+            },
+            {
+                ticker: 'SGA-TR',
+                name: 'Turkey SGA',
+                price: 26500.00,
+                change: -1.23,
+                monthlyRvol: 1.78,
+                fiveMinRvol: 2.12,
+                fiveMinDelta: -234000,
+                marketCap: 2650000000000,
+                float: 100000000000,
+                volume: 1654300000,
+                volumePercentage: 0.0016543
+            },
+            {
+                ticker: 'SGA-CH',
+                name: 'Switzerland SGA',
+                price: 25400.00,
+                change: 0.78,
+                monthlyRvol: 1.34,
+                fiveMinRvol: 1.56,
+                fiveMinDelta: 123000,
+                marketCap: 2540000000000,
+                float: 100000000000,
+                volume: 1543200000,
+                volumePercentage: 0.0015432
+            },
+            {
+                ticker: 'SGA-SE',
+                name: 'Sweden SGA',
+                price: 24300.00,
+                change: 1.45,
+                monthlyRvol: 1.45,
+                fiveMinRvol: 1.78,
+                fiveMinDelta: 234000,
+                marketCap: 2430000000000,
+                float: 100000000000,
+                volume: 1432100000,
+                volumePercentage: 0.0014321
+            }
+        ];
+
+        let currentFilter = 'all';
+        let currentSort = { column: null, ascending: true };
+        let filteredStocks = [...sgaStocks];
+
+        // Format large numbers
+        function formatNumber(num) {
+            if (num >= 1e12) return (num / 1e12).toFixed(2) + 'T';
+            if (num >= 1e9) return (num / 1e9).toFixed(2) + 'B';
+            if (num >= 1e6) return (num / 1e6).toFixed(2) + 'M';
+            if (num >= 1e3) return (num / 1e3).toFixed(2) + 'K';
+            return num.toFixed(2);
+        }
+
+        // Format currency
+        function formatCurrency(num) {
+            return '$' + formatNumber(num);
+        }
+
+        // Get RVOL class
+        function getRvolClass(rvol) {
+            if (rvol >= 2.0) return 'rvol-high';
+            if (rvol >= 1.5) return 'rvol-medium';
+            return 'rvol-low';
+        }
+
+        // Get change class
+        function getChangeClass(change) {
+            return change >= 0 ? 'change-positive' : 'change-negative';
+        }
+
+        // Get delta class
+        function getDeltaClass(delta) {
+            return delta >= 0 ? 'delta-positive' : 'delta-negative';
+        }
+
+        // Get badge
+        function getBadge(stock) {
+            if (stock.fiveMinRvol >= 2.5) return '<span class="badge badge-hot">🔥 HOT</span>';
+            if (stock.fiveMinDelta > 0) return '<span class="badge badge-trending">📈 TRENDING</span>';
+            return '<span class="badge badge-stable">✓ STABLE</span>';
+        }
+
+        // Render table
+        function renderTable() {
+            const tbody = document.getElementById('screener-body');
+            tbody.innerHTML = '';
+
+            filteredStocks.forEach(stock => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>
+                        <div class="ticker-cell">
+                            <div>
+                                <div class="ticker-symbol">${stock.ticker}</div>
+                                <div class="ticker-name">${stock.name}</div>
+                            </div>
+                            ${getBadge(stock)}
+                        </div>
+                    </td>
+                    <td class="price-cell">${formatCurrency(stock.price)}</td>
+                    <td class="change-cell ${getChangeClass(stock.change)}">${stock.change >= 0 ? '+' : ''}${stock.change.toFixed(2)}%</td>
+                    <td class="rvol-cell ${getRvolClass(stock.monthlyRvol)}">${stock.monthlyRvol.toFixed(2)}x</td>
+                    <td class="rvol-cell ${getRvolClass(stock.fiveMinRvol)}">${stock.fiveMinRvol.toFixed(2)}x</td>
+                    <td class="delta-cell ${getDeltaClass(stock.fiveMinDelta)}">${formatNumber(stock.fiveMinDelta)}</td>
+                    <td class="market-cap-cell">${formatCurrency(stock.marketCap)}</td>
+                    <td class="float-cell">${formatNumber(stock.float)}</td>
+                    <td class="volume-cell">${formatNumber(stock.volume)}</td>
+                    <td class="percentage-cell">${(stock.volumePercentage * 100).toFixed(3)}%</td>
+                `;
+                tbody.appendChild(row);
+            });
+
+            updateStats();
+        }
+
+        // Update statistics
+        function updateStats() {
+            document.getElementById('total-stocks').textContent = filteredStocks.length;
+            
+            const avgMonthlyRvol = filteredStocks.reduce((sum, s) => sum + s.monthlyRvol, 0) / filteredStocks.length;
+            document.getElementById('avg-monthly-rvol').textContent = avgMonthlyRvol.toFixed(2) + 'x';
+            
+            const avg5minRvol = filteredStocks.reduce((sum, s) => sum + s.fiveMinRvol, 0) / filteredStocks.length;
+            document.getElementById('avg-5min-rvol').textContent = avg5minRvol.toFixed(2) + 'x';
+            
+            const gainers = filteredStocks.filter(s => s.change > 0).length;
+            document.getElementById('total-gainers').textContent = gainers;
+            
+            const losers = filteredStocks.filter(s => s.change < 0).length;
+            document.getElementById('total-losers').textContent = losers;
+        }
+
+        // Filter stocks
+        function filterStocks(filter) {
+            currentFilter = filter;
+            
+            // Update button states
+            document.querySelectorAll('.filter-btn').forEach(btn => {
+                btn.classList.remove('active');
+                if (btn.dataset.filter === filter) {
+                    btn.classList.add('active');
+                }
+            });
+
+            switch(filter) {
+                case 'all':
+                    filteredStocks = [...sgaStocks];
+                    break;
+                case 'hot':
+                    filteredStocks = sgaStocks.filter(s => s.fiveMinRvol >= 2.0);
+                    break;
+                case 'trending':
+                    filteredStocks = sgaStocks.filter(s => s.fiveMinDelta > 0);
+                    break;
+                case 'high-mcap':
+                    filteredStocks = sgaStocks.filter(s => s.marketCap >= 10000000000);
+                    break;
+                case 'low-float':
+                    filteredStocks = sgaStocks.filter(s => s.float < 50000000);
+                    break;
+            }
+
+            // Apply search if exists
+            const searchTerm = document.getElementById('search-input').value.toLowerCase();
+            if (searchTerm) {
+                filteredStocks = filteredStocks.filter(s => 
+                    s.ticker.toLowerCase().includes(searchTerm) || 
+                    s.name.toLowerCase().includes(searchTerm)
+                );
+            }
+
+            // Apply current sort
+            if (currentSort.column) {
+                sortTable(currentSort.column, false);
+            }
+
+            renderTable();
+        }
+
+        // Sort table
+        function sortTable(column, updateUI = true) {
+            if (updateUI) {
+                if (currentSort.column === column) {
+                    currentSort.ascending = !currentSort.ascending;
+                } else {
+                    currentSort.column = column;
+                    currentSort.ascending = true;
+                }
+
+                // Update sort icons
+                document.querySelectorAll('.sort-icon').forEach(icon => {
+                    icon.classList.remove('active');
+                    icon.textContent = '↕';
+                });
+                
+                const activeIcon = document.getElementById(`sort-${column}`);
+                if (activeIcon) {
+                    activeIcon.classList.add('active');
+                    activeIcon.textContent = currentSort.ascending ? '↑' : '↓';
+                }
+            }
+
+            filteredStocks.sort((a, b) => {
+                let valA = a[column];
+                let valB = b[column];
+                
+                if (typeof valA === 'string') {
+                    valA = valA.toLowerCase();
+                    valB = valB.toLowerCase();
+                }
+                
+                if (valA < valB) return currentSort.ascending ? -1 : 1;
+                if (valA > valB) return currentSort.ascending ? 1 : -1;
+                return 0;
+            });
+
+            if (updateUI) {
+                renderTable();
+            }
+        }
+
+        // Search functionality
+        document.getElementById('search-input').addEventListener('input', (e) => {
+            const searchTerm = e.target.value.toLowerCase();
+            
+            if (searchTerm === '') {
+                filterStocks(currentFilter);
+            } else {
+                filteredStocks = sgaStocks.filter(s => 
+                    s.ticker.toLowerCase().includes(searchTerm) || 
+                    s.name.toLowerCase().includes(searchTerm)
+                );
+                
+                // Apply current filter on top of search
+                if (currentFilter !== 'all') {
+                    switch(currentFilter) {
+                        case 'hot':
+                            filteredStocks = filteredStocks.filter(s => s.fiveMinRvol >= 2.0);
+                            break;
+                        case 'trending':
+                            filteredStocks = filteredStocks.filter(s => s.fiveMinDelta > 0);
+                            break;
+                        case 'high-mcap':
+                            filteredStocks = filteredStocks.filter(s => s.marketCap >= 10000000000);
+                            break;
+                        case 'low-float':
+                            filteredStocks = filteredStocks.filter(s => s.float < 50000000);
+                            break;
+                    }
+                }
+                
+                renderTable();
+            }
+        });
+
+        // Filter button clicks
+        document.querySelectorAll('.filter-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                filterStocks(btn.dataset.filter);
+            });
+        });
+
+        // Initial render
+        renderTable();
+
+        // Simulate live updates
+        setInterval(() => {
+            sgaStocks.forEach(stock => {
+                // Random price movement
+                const priceChange = (Math.random() - 0.5) * (stock.price * 0.001);
+                stock.price = Math.max(0.01, stock.price + priceChange);
+                stock.change += (Math.random() - 0.5) * 0.1;
+                
+                // Random RVOL updates
+                stock.fiveMinRvol = Math.max(0.5, stock.fiveMinRvol + (Math.random() - 0.5) * 0.1);
+                
+                // Random delta updates
+                stock.fiveMinDelta += Math.floor((Math.random() - 0.5) * 100000);
+                
+                // Random volume updates
+                stock.volume += Math.floor(Math.random() * 1000000);
+            });
+
+            // Re-render with current filter
+            filterStocks(currentFilter);
+        }, 3000); // Update every 3 seconds
+    </script>
+</body>
+</html>

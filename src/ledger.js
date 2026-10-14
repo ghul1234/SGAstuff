@@ -4,7 +4,6 @@ export const TAXONOMY = [
   'Healthcare',
   'Technology',
   'Environmental',
-  'Defense',
   'Economic Relief',
   'Social Services'
 ];

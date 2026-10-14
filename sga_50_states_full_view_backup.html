@@ -1,0 +1,672 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>SGA — 470 States/Provinces Worldwide: Stock & Futures</title>
+<style>
+  :root {
+    --bg:#0b1020; --panel:#131a30; --panel2:#1a2340; --border:#2a3556;
+    --text:#e8ecf7; --muted:#8c96b8; --accent:#4fd1c5; --accent2:#f6ad55; --good:#48bb78; --bad:#f56565; --fut:#c084fc;
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; background:var(--bg); color:var(--text); padding:24px; }
+  .wrap { max-width:1250px; margin:0 auto; }
+  h1 { font-size:21px; margin:0 0 4px 0; }
+  .sub { color:var(--muted); font-size:12.5px; margin-bottom:18px; line-height:1.5; }
+
+  .summary { display:flex; gap:14px; margin-bottom:18px; flex-wrap:wrap; }
+  .card { flex:1; min-width:200px; background:linear-gradient(135deg,var(--panel2),var(--panel)); border:1px solid var(--border); border-radius:12px; padding:14px 16px; }
+  .card .tag { font-size:10.5px; text-transform:uppercase; letter-spacing:.07em; color:var(--muted); margin-bottom:6px; }
+  .card .big { font-size:19px; font-weight:800; }
+  .card .small { font-size:11px; color:var(--muted); margin-top:4px; }
+  .card.stock .big { color: var(--accent); }
+  .card.fut .big { color: var(--fut); }
+
+  .controls { background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:14px 16px; margin-bottom:18px; }
+  .controls .row { display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+  .controls label { font-size:12px; color:var(--muted); display:flex; align-items:center; gap:6px; }
+  input[type=number] { width:85px; background:#0d1326; border:1px solid var(--border); color:var(--text); border-radius:6px; padding:5px 8px; font-size:12px; font-family:inherit; }
+  input[type=number]:focus { outline:none; border-color:var(--accent); }
+
+  table { width:100%; border-collapse:collapse; font-size:11.5px; background:var(--panel); border:1px solid var(--border); border-radius:12px; overflow:hidden; }
+  thead th { text-align:right; padding:8px 10px; background:var(--panel2); color:var(--muted); font-size:10px; text-transform:uppercase; letter-spacing:.04em; border-bottom:1px solid var(--border); }
+  thead th:first-child, tbody td:first-child { text-align:left; }
+  thead tr.group th { background: #0d1326; border-bottom: none; font-size: 10px; }
+  tbody td { padding:6px 10px; text-align:right; border-bottom:1px solid var(--border); white-space:nowrap; }
+  tbody tr:hover { background:rgba(79,209,197,0.06); }
+  tbody tr:last-child td { border-bottom:none; }
+  .rank { color:var(--muted); font-size:10px; width:20px; }
+  .colfut { color: var(--fut); }
+  .colstock { color: var(--accent); }
+  .colgain { color: var(--good); font-weight:600; }
+  .scrollwrap { overflow-x:auto; }
+
+  .tabs { display:flex; gap:8px; margin-bottom:18px; }
+  .tab-btn {
+    background: var(--panel); border:1px solid var(--border); color: var(--muted);
+    padding: 10px 20px; border-radius: 10px; font-size: 13px; font-weight:600; cursor:pointer;
+    font-family: inherit; transition: all 0.15s ease;
+  }
+  .tab-btn:hover { color: var(--text); }
+  .tab-btn.active.tab-stock { background: linear-gradient(135deg, var(--panel2), var(--panel)); color: var(--accent); border-color: var(--accent); }
+  .tab-btn.active.tab-fut { background: linear-gradient(135deg, var(--panel2), var(--panel)); color: var(--fut); border-color: var(--fut); }
+  .tabpanel { display:none; }
+  .tabpanel.active { display:block; }
+  .footer-note { margin-top:18px; font-size:11.5px; color:var(--muted); line-height:1.6; padding:14px 16px; background:var(--panel); border:1px solid var(--border); border-radius:10px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>SGA — 470 States/Provinces Worldwide: Stock & Futures</h1>
+  <div class="sub">
+    50 U.S. states + 50 international provinces/states/regions (China, Germany, Canada, Japan, France, India, Brazil, UK, South Korea, Australia, Italy). <b>Data quality varies:</b> all U.S. states and Chinese provinces use solid, sourced figures; several other countries' entries are commonly-cited approximations, not independently verified this session — treat as directionally right, not precise.<br><br>
+    Futures: quoted price = EOI directly (0-~270 range), notional = EOI × multiplier. Stock: no-premium market cap = GDP, price target = market cap ÷ shares (state+fed own 100% pre-IPO at the given capital &amp; entry price).
+  </div>
+
+  <div class="tabs">
+    <button class="tab-btn tab-stock active" id="btnStock" onclick="showTab('stock')">📈 Stocks</button>
+    <button class="tab-btn tab-fut" id="btnFut" onclick="showTab('fut')">📊 Futures</button>
+  </div>
+
+  <!-- STOCKS TAB -->
+  <div class="tabpanel active" id="panelStock">
+    <div class="controls">
+      <div class="row">
+        <label>Stock capital, state+fed ($M) <input type="number" id="capTotal" value="400" step="1"></label>
+        <label>Stock entry price ($) <input type="number" id="entry" value="0.01" step="any"></label>
+        <label>Shares outstanding per state (B) <input type="number" id="sharesOutstanding" value="40" step="0.01"></label>
+        <button class="tab-btn" id="btnResetShares" style="padding:6px 12px; font-size:11.5px;" onclick="resetShares()">Reset to 100% ownership</button>
+      </div>
+      <div class="row" style="margin-top:10px; padding-top:10px; border-top:1px solid var(--border);">
+        <label>Fed ownership % <input type="number" id="fedPct" value="20" step="1"></label>
+        <label>State ownership % <input type="number" id="statePct" value="20" step="1"></label>
+        <span style="font-size:11.5px; color:var(--muted);">— computes Fed/State equity directly as a % of market cap, alongside the shares-based price target below</span>
+      </div>
+      <div class="row" style="margin-top:10px; padding-top:10px; border-top:1px solid var(--border);">
+        <label>💰 My total portfolio investment ($) <input type="number" id="myStockInvestment" value="10000" step="100"></label>
+        <span style="font-size:11.5px; color:var(--muted);">— split evenly across all 470 entities, buying shares at the entry price above</span>
+      </div>
+    </div>
+
+    <div class="summary">
+      <div class="card" style="border-color: var(--good);">
+        <div class="tag">My Investment (split across all 470)</div>
+        <div class="big" id="myStockInvested">—</div>
+        <div class="small" id="myStockPerEntity">—</div>
+      </div>
+      <div class="card" style="border-color: var(--good);">
+        <div class="tag">My Total Value at Price Targets</div>
+        <div class="big" id="myStockValue" style="color:var(--good);">—</div>
+      </div>
+      <div class="card" style="border-color: var(--good);">
+        <div class="tag">My Total Gain</div>
+        <div class="big" id="myStockGain" style="color:var(--good);">—</div>
+      </div>
+    </div>
+
+    <div class="summary">
+      <div class="card stock">
+        <div class="tag">Total Stock Market Cap (470 entities)</div>
+        <div class="big" id="totStockCap">—</div>
+      </div>
+      <div class="card">
+        <div class="tag">Total Capital Deployed</div>
+        <div class="big" id="totStockCapital">—</div>
+      </div>
+      <div class="card">
+        <div class="tag">Effective Ownership % (shares-based)</div>
+        <div class="big" id="ownershipPct">—</div>
+      </div>
+      <div class="card">
+        <div class="tag">Combined Stock Gain (470 entities)</div>
+        <div class="big" id="totStockGain">—</div>
+      </div>
+      <div class="card" style="border-color: var(--accent2);">
+        <div class="tag">Sum of ALL Gain % (every entity added together)</div>
+        <div class="big" id="sumStockGainPct" style="color:var(--accent2);">—</div>
+        <div class="small">Not a portfolio return — literally every row's % added up</div>
+      </div>
+    </div>
+
+    <div class="summary">
+      <div class="card">
+        <div class="tag">Fed Gov Equity (all 470 entities, % mode)</div>
+        <div class="big" id="totFedEquity">—</div>
+      </div>
+      <div class="card">
+        <div class="tag">State/Regional Govs Equity (all 470, % mode)</div>
+        <div class="big" id="totStateEquity">—</div>
+      </div>
+      <div class="card">
+        <div class="tag">Public Float Remaining</div>
+        <div class="big" id="publicFloatPct">—</div>
+        <div class="small" id="publicFloatVal">—</div>
+      </div>
+    </div>
+
+    <div class="scrollwrap">
+    <table>
+      <thead>
+        <tr><th>#</th><th>State</th><th>Market Cap</th><th>Shares Out.</th><th>Price Target</th><th>Gain to Target</th><th>Fed Equity (%)</th><th>State Equity (%)</th></tr>
+      </thead>
+      <tbody id="tbodyStock"></tbody>
+    </table>
+    </div>
+
+    <div class="footer-note">
+      <b>Two modes shown side by side:</b> Price Target &amp; Gain columns use the shares-outstanding model (capital ÷ entry ÷ shares). Fed/State Equity columns use the direct ownership-percentage model (just % × market cap). They're independent — you can have shares-based ownership be 100% while also viewing what a flat 20%/20% government split would be worth, for comparison.
+    </div>
+  </div>
+
+  <!-- FUTURES TAB -->
+  <div class="tabpanel" id="panelFut">
+    <div class="controls">
+      <div class="row">
+        <label>State CPI (%) <input type="number" id="cpi" value="2.8" step="0.1"></label>
+        <label>Futures multiplier ($/pt) <input type="number" id="mult" value="2000" step="1"></label>
+        <label>Seed price ($) <input type="number" id="futSeed" value="54396.39" step="any"></label>
+        <label>Leverage <input type="number" id="futLeverage" value="20" step="1">x</label>
+        <label>Daily price limit (%) <input type="number" id="dailyLimit" value="10" step="1"></label>
+      </div>
+      <div class="row" style="margin-top:10px; padding-top:10px; border-top:1px solid var(--border);">
+        <span style="font-size:11.5px; color:var(--muted);">Days-to-target uses a liquidity tier by market cap (bigger economies get a smaller effective daily limit — thinner relative float per dollar of notional needed to move price — see note below).</span>
+      </div>
+      <div class="row" style="margin-top:10px; padding-top:10px; border-top:1px solid var(--border);">
+        <label>💰 My total portfolio investment ($) <input type="number" id="myFutInvestment" value="10000" step="100"></label>
+        <span style="font-size:11.5px; color:var(--muted);">— split evenly across all 470 contracts as margin, at the leverage above</span>
+      </div>
+    </div>
+
+    <div class="summary">
+      <div class="card" style="border-color: var(--fut);">
+        <div class="tag">My Investment (split across all 470)</div>
+        <div class="big" id="myFutInvested">—</div>
+        <div class="small" id="myFutPerEntity">—</div>
+      </div>
+      <div class="card" style="border-color: var(--fut);">
+        <div class="tag">My Total Value at Price Targets</div>
+        <div class="big" id="myFutValue" style="color:var(--fut);">—</div>
+      </div>
+      <div class="card" style="border-color: var(--fut);">
+        <div class="tag">My Total Gain (levered)</div>
+        <div class="big" id="myFutGain" style="color:var(--fut);">—</div>
+      </div>
+    </div>
+
+    <div class="summary">
+      <div class="card fut">
+        <div class="tag">Total Futures Notional (470 entities)</div>
+        <div class="big" id="totFutNotional">—</div>
+      </div>
+      <div class="card">
+        <div class="tag">EOI Range Across States</div>
+        <div class="big" id="eoiRange">—</div>
+      </div>
+      <div class="card">
+        <div class="tag">Inflation Factor Applied</div>
+        <div class="big" id="inflationOut">—</div>
+      </div>
+      <div class="card">
+        <div class="tag">Combined Gain (unlevered / levered)</div>
+        <div class="big" id="totFutGain">—</div>
+      </div>
+    </div>
+
+    <div class="summary">
+      <div class="card" style="border-color: var(--accent2);">
+        <div class="tag">Sum of ALL Gain % — 1x (every entity added together)</div>
+        <div class="big" id="sumFutGainPct" style="color:var(--accent2);">—</div>
+        <div class="small">Not a portfolio return — literally every row's % added up</div>
+      </div>
+      <div class="card" style="border-color: var(--accent2);">
+        <div class="tag">Sum of ALL Gain % — Levered</div>
+        <div class="big" id="sumFutGainLevPct" style="color:var(--accent2);">—</div>
+        <div class="small">Sum of the levered column, all 470 rows</div>
+      </div>
+    </div>
+
+    <div class="scrollwrap">
+    <table>
+      <thead>
+        <tr><th>#</th><th>State</th><th>Seed Price ($)</th><th>EOI</th><th>Price Target ($)</th><th>Gain (1x)</th><th>Gain (levered)</th><th>Days to Fair Value</th></tr>
+      </thead>
+      <tbody id="tbodyFut"></tbody>
+    </table>
+    </div>
+
+    <div class="footer-note">
+      <b>Seed price is now in dollars</b> — the actual entry price of the contract — compared directly against the price target (EOI × multiplier, also in dollars). Gain % = (Price Target − Seed) ÷ Seed. Leverage multiplies that gain directly (Gain × Leverage), same relationship used earlier: futures return = leverage × underlying % move. One flat seed price applies to every state here, so states with a higher price target (bigger EOI) show a bigger gain off the same seed — adjust seed per-state manually if you want each state normalized to its own starting discount instead.<br><br>
+      <b>Days to Fair Value — read this carefully:</b> this is a <i>modeling estimate, not a prediction</i>. It reuses the daily price-limit convergence math from earlier (seed price walking up toward the target under a capped daily move), adjusted by a liquidity tier based on market cap: mega economies (>$1T GDP) get 60% of the stated daily limit (assumed deeper, slower-moving market), large ($200B-$1T) get 80%, mid-size ($50B-$200B) trade at the stated limit, small (<$50B) get 130% (assumed thinner float, so percentage moves happen faster — but also far more prone to gaps and failed fills, which this number does NOT capture). <b>These liquidity-tier multipliers (0.6/0.8/1.0/1.3) are assumptions I set for this model, not derived from real trading data — no SGA has ever traded, so there is no real volatility or liquidity history to calibrate against.</b>
+    </div>
+  </div>
+</div>
+
+
+<script>
+const states = [
+["California",4103124,"US"],["Texas",2709393,"US"],["New York",2297028,"US"],["Florida",1705565,"US"],
+["Illinois",1137244,"US"],["Pennsylvania",1024206,"US"],["Ohio",927740,"US"],["Georgia",882535,"US"],
+["Washington",854683,"US"],["New Jersey",846587,"US"],["North Carolina",839122,"US"],["Massachusetts",780666,"US"],
+["Virginia",764475,"US"],["Michigan",719392,"US"],["Colorado",553323,"US"],["Arizona",552167,"US"],
+["Tennessee",549709,"US"],["Maryland",542766,"US"],["Indiana",527381,"US"],["Minnesota",500851,"US"],
+["Wisconsin",451285,"US"],["Missouri",451201,"US"],["Connecticut",365723,"US"],["South Carolina",349965,"US"],
+["Oregon",331029,"US"],["Louisiana",327782,"US"],["Alabama",321238,"US"],["Utah",300904,"US"],
+["Kentucky",293021,"US"],["Oklahoma",265779,"US"],["Nevada",260728,"US"],["Iowa",257021,"US"],
+["Kansas",234673,"US"],["Arkansas",188723,"US"],["Nebraska",185411,"US"],["Mississippi",157491,"US"],
+["New Mexico",140542,"US"],["Idaho",128132,"US"],["New Hampshire",121189,"US"],["Hawaii",115627,"US"],
+["West Virginia",107660,"US"],["Delaware",103253,"US"],["Maine",98606,"US"],["Rhode Island",82493,"US"],
+["Montana",75999,"US"],["North Dakota",75399,"US"],["South Dakota",75179,"US"],["Alaska",69969,"US"],
+["Wyoming",52946,"US"],["Vermont",45707,"US"],
+// International -- 50 more, GDP in $ millions. See confidence flags in accompanying notes;
+// China figures are solid (2025 NBS data), several others are approximate.
+["Guangdong",2040000,"China"],["Jiangsu",1991000,"China"],["Shandong",1443000,"China"],
+["Zhejiang",1322000,"China"],["Sichuan",946000,"China"],["Henan",932000,"China"],
+["Hubei",876000,"China"],["Fujian",842000,"China"],["Shanghai",793000,"China"],
+["Hunan",774000,"China"],["Anhui",741000,"China"],["Beijing",728000,"China"],
+["Hebei",690000,"China"],["Shaanxi",511000,"China"],["Jiangxi",504000,"China"],
+["Chongqing",472000,"China"],["Liaoning",415000,"China"],
+["North Rhine-Westphalia",941700,"Germany"],["Bavaria",855000,"Germany"],
+["Baden-Württemberg",702200,"Germany"],["Lower Saxony",356400,"Germany"],["Hesse",324000,"Germany"],
+["Ontario",792000,"Canada"],["Quebec",396000,"Canada"],["Alberta",324000,"Canada"],
+["British Columbia",288000,"Canada"],["Saskatchewan",83000,"Canada"],
+["Tokyo",624000,"Japan"],["Osaka",364000,"Japan"],["Aichi",368000,"Japan"],["Kanagawa",241000,"Japan"],
+["Île-de-France",928900,"France"],["Auvergne-Rhône-Alpes",302000,"France"],["Hauts-de-France",184000,"France"],
+["Maharashtra",621680,"India"],["Tamil Nadu",358500,"India"],["Karnataka",379900,"India"],
+["Gujarat",376600,"India"],["Uttar Pradesh",457700,"India"],["Telangana",225500,"India"],
+["Punjab (India)",112700,"India"],
+["São Paulo",700000,"Brazil"],["Rio de Janeiro",300000,"Brazil"],["Minas Gerais",250000,"Brazil"],
+["Greater London",700000,"UK"],["South East England",350000,"UK"],["North West England",250000,"UK"],
+["Gyeonggi Province",450000,"South Korea"],["Seoul",400000,"South Korea"],
+["New South Wales",450000,"Australia"],["Victoria",350000,"Australia"],
+["Lombardy",529200,"Italy"],
+// 20 more added
+["Mexico City",248690,"Mexico"],["State of Mexico",168909,"Mexico"],["Nuevo León",148847,"Mexico"],
+["Jalisco",136900,"Mexico"],["Guanajuato",83567,"Mexico"],["Baja California",72454,"Mexico"],
+["Chihuahua",71364,"Mexico"],
+["Madrid",270000,"Spain"],["Catalonia",290000,"Spain"],
+["Moscow",379740,"Russia"],
+["DKI Jakarta",232871,"Indonesia"],
+["Riyadh Region",250000,"Saudi Arabia"],
+["Masovian (Warsaw)",150000,"Poland"],
+["Zurich",150000,"Switzerland"],
+["Gauteng",180000,"South Africa"],
+["Istanbul",280000,"Turkey"],
+["Dubai",200000,"UAE"],
+["Bangkok",170000,"Thailand"],
+["North Holland",216000,"Netherlands"],
+// 50 more added
+// China -- 14 more real 2025 provinces (indiadatareport.com / Grokipedia, NBS-sourced)
+["Yunnan",460000,"China"],["Guangxi",450000,"China"],["Inner Mongolia",430000,"China"],
+["Guizhou",330000,"China"],["Xinjiang",290000,"China"],["Gansu",190000,"China"],
+["Heilongjiang",280000,"China"],["Jilin",220000,"China"],["Qinghai",70000,"China"],
+["Ningxia",100000,"China"],["Xizang (Tibet)",40000,"China"],["Hainan",130000,"China"],
+["Shanxi",400000,"China"],["Tianjin",260000,"China"],
+// Germany -- 2 more real 2024 (Destatis), 9 estimated (⚠ derived from import-share proxy or general knowledge)
+["Rhineland-Palatinate",198800,"Germany"],["Saxony",174900,"Germany"],
+["Berlin",205200,"Germany"],["Hamburg",140400,"Germany"],["Schleswig-Holstein",118800,"Germany"],
+["Brandenburg",97200,"Germany"],["Saxony-Anhalt",81000,"Germany"],["Thuringia",77800,"Germany"],
+["Mecklenburg-Vorpommern",59400,"Germany"],["Saarland",41000,"Germany"],["Bremen",41000,"Germany"],
+// India -- 10 more (⚠ general estimates, not independently verified this session)
+["Kerala",150000,"India"],["West Bengal",220000,"India"],["Andhra Pradesh",200000,"India"],
+["Rajasthan",180000,"India"],["Madhya Pradesh",190000,"India"],["Haryana",150000,"India"],
+["Bihar",130000,"India"],["Odisha",110000,"India"],["Jharkhand",70000,"India"],["Assam",80000,"India"],
+// Russia -- 4 (⚠ estimates)
+["Moscow Oblast",180000,"Russia"],["Saint Petersburg",128090,"Russia"],
+["Tatarstan",70000,"Russia"],["Sverdlovsk Oblast",65000,"Russia"],
+// Brazil -- 4 more (⚠ estimates)
+["Paraná",150000,"Brazil"],["Rio Grande do Sul",130000,"Brazil"],
+["Bahia",100000,"Brazil"],["Santa Catarina",110000,"Brazil"],
+// Canada -- 3 more (⚠ estimates)
+["Manitoba",75000,"Canada"],["Nova Scotia",40000,"Canada"],["New Brunswick",35000,"Canada"],
+// Misc -- 4 (⚠ estimates)
+["Silesia",90000,"Poland"],["South Holland",220000,"Netherlands"],
+["Ho Chi Minh City",146500,"Vietnam"],["Kano State",40000,"Nigeria"],
+// 50 more added
+// Pakistan -- 4 real, sourced 2026 provincial GSP data
+["Punjab (Pakistan)",265600,"Pakistan"],["Sindh",103900,"Pakistan"],
+["Khyber Pakhtunkhwa",44900,"Pakistan"],["Balochistan",23600,"Pakistan"],
+// Egypt/Nigeria -- real, sourced
+["Cairo",142000,"Egypt"],["Lagos State",259750,"Nigeria"],
+// Rest -- ⚠ estimates, not independently verified this session
+["Buenos Aires Province",180000,"Argentina"],["Santiago Metropolitan",120000,"Chile"],
+["Bogotá D.C.",110000,"Colombia"],["Lima",90000,"Peru"],
+["Metro Manila",100000,"Philippines"],["Cebu",30000,"Philippines"],
+["Selangor",90000,"Malaysia"],["Kuala Lumpur",50000,"Malaysia"],
+["Tehran Province",150000,"Iran"],["Tel Aviv District",120000,"Israel"],
+["Stockholm County",180000,"Sweden"],["Oslo",100000,"Norway"],
+["Flanders",350000,"Belgium"],["Vienna",110000,"Austria"],
+["Lisbon",90000,"Portugal"],["Dublin",180000,"Ireland"],
+["Auckland",90000,"New Zealand"],["Dhaka",130000,"Bangladesh"],
+["Addis Ababa",20000,"Ethiopia"],["Nairobi",40000,"Kenya"],
+["Casablanca-Settat",50000,"Morocco"],["Baghdad",60000,"Iraq"],
+["Almaty",40000,"Kazakhstan"],["Kyiv",40000,"Ukraine"],
+["Prague",100000,"Czech Republic"],["Budapest",90000,"Hungary"],
+["Bucharest-Ilfov",90000,"Romania"],["Attica",130000,"Greece"],
+["Uusimaa (Helsinki)",130000,"Finland"],["Capital Region (Copenhagen)",130000,"Denmark"],
+["Distrito Capital (Caracas)",15000,"Venezuela"],["Guayas (Guayaquil)",40000,"Ecuador"],
+["Rivers State",25000,"Nigeria"],["Federal Capital Territory (Abuja)",30000,"Nigeria"],
+["Makkah Region (Jeddah)",150000,"Saudi Arabia"],["Eastern Province",130000,"Saudi Arabia"],
+["Abu Dhabi",280000,"UAE"],["Western Cape",60000,"South Africa"],
+["KwaZulu-Natal",70000,"South Africa"],["Hanoi",55000,"Vietnam"],
+["West Java",178692,"Indonesia"],["East Java",200525,"Indonesia"],
+["Central Java",115049,"Indonesia"],["North Sumatra",72590,"Indonesia"],
+// 50 more added (round 4)
+// Colombia -- 6 real, sourced (Wikipedia dept. GDP table, 2020 base, scaled 1.45x to ~2025 by nat'l GDP growth)
+["Bogotá D.C. (dept.)",168600,"Colombia"],["Antioquia",107900,"Colombia"],
+["Valle del Cauca",65400,"Colombia"],["Santander",43300,"Colombia"],
+["Cundinamarca",42600,"Colombia"],["Atlántico",30100,"Colombia"],
+// Rest -- ⚠ estimates, not independently verified this session
+["Western Province (Sri Lanka)",30000,"Sri Lanka"],["Yangon",25000,"Myanmar"],
+["Phnom Penh",10000,"Cambodia"],["Vientiane",5000,"Laos"],["Ulaanbaatar",8000,"Mongolia"],
+["Tashkent",15000,"Uzbekistan"],["Baku",40000,"Azerbaijan"],["Tbilisi",15000,"Georgia"],
+["Yerevan",10000,"Armenia"],["Amman",20000,"Jordan"],["Beirut",15000,"Lebanon"],
+["Doha",150000,"Qatar"],["Kuwait City",130000,"Kuwait"],["Muscat",60000,"Oman"],
+["Manama",30000,"Bahrain"],["Tunis",30000,"Tunisia"],["Algiers",50000,"Algeria"],
+["Greater Accra",30000,"Ghana"],["Dar es Salaam",25000,"Tanzania"],["Kampala",15000,"Uganda"],
+["Lusaka",10000,"Zambia"],["Harare",8000,"Zimbabwe"],["Luanda",40000,"Angola"],
+["Maputo",8000,"Mozambique"],["Kathmandu",8000,"Nepal"],["Puerto Rico",118000,"US Territory"],
+["Delhi NCT",130000,"India"],["Chhattisgarh",60000,"India"],["Uttarakhand",40000,"India"],
+["Himachal Pradesh",25000,"India"],["Espírito Santo",60000,"Brazil"],["Pernambuco",55000,"Brazil"],
+["Ceará",45000,"Brazil"],["Zurich Canton",150000,"Switzerland"],["Geneva Canton",60000,"Switzerland"],
+["Vestlandet (Bergen)",50000,"Norway"],["Skåne (Malmö)",60000,"Sweden"],
+["Krasnodar Krai",55000,"Russia"],["Bashkortostan",40000,"Russia"],["Rostov Oblast",40000,"Russia"],
+["Krakow (Malopolska)",55000,"Poland"],["Wielkopolska (Poznan)",60000,"Poland"],
+["South Australia",90000,"Australia"],["Queensland",280000,"Australia"],
+// 50 more added (round 6) -- prioritized real BPS Indonesia data this round
+// Real, sourced (BPS 2024, converted at ~15,800 IDR/USD)
+["Riau",70410,"Indonesia"],["Banten",55293,"Indonesia"],["East Kalimantan",54331,"Indonesia"],
+["South Sulawesi",44066,"Indonesia"],["South Sumatra",42023,"Indonesia"],["Lampung",30625,"Indonesia"],
+["Central Sulawesi",23858,"Indonesia"],["Riau Islands",22306,"Indonesia"],["West Sumatra",21072,"Indonesia"],
+["Jambi",20442,"Indonesia"],["West Kalimantan",18998,"Indonesia"],["Bali",18889,"Indonesia"],
+["South Kalimantan",18153,"Indonesia"],["Aceh",15392,"Indonesia"],["Central Kalimantan",14105,"Indonesia"],
+// Rest of round 6 -- ⚠ estimates, not independently verified this session
+["Karachi (city GDP)",90000,"Pakistan"],["Lahore (city GDP)",60000,"Pakistan"],
+["Faisalabad",20000,"Pakistan"],["Rawalpindi",15000,"Pakistan"],["Chittagong",25000,"Bangladesh"],
+["Khulna",10000,"Bangladesh"],["Rajshahi",8000,"Bangladesh"],["Colombo District",15000,"Sri Lanka"],
+["Kandy",5000,"Sri Lanka"],["Mandalay",8000,"Myanmar"],["Naypyidaw",3000,"Myanmar"],
+["Battambang",3000,"Cambodia"],["Siem Reap",2000,"Cambodia"],["Chiang Mai",20000,"Thailand"],
+["Phuket",8000,"Thailand"],["Cebu (Visayas)",25000,"Philippines"],["Davao",15000,"Philippines"],
+["Penang",40000,"Malaysia"],["Johor",45000,"Malaysia"],["Isfahan Province",25000,"Iran"],
+["Fars Province",20000,"Iran"],["Haifa District",30000,"Israel"],["Jerusalem District",25000,"Israel"],
+["Ankara",90000,"Turkey"],["Izmir",70000,"Turkey"],["Bursa",40000,"Turkey"],
+["Alexandria",40000,"Egypt"],["Giza",30000,"Egypt"],["Casablanca (city)",30000,"Morocco"],
+["Rabat",15000,"Morocco"],["Basra",20000,"Iraq"],["Erbil",15000,"Iraq"],
+["Shymkent",10000,"Kazakhstan"],["Astana",25000,"Kazakhstan"],
+// 50 more added (round 7) -- prioritized real Rosstat data corrections + broader coverage
+// (Moscow and Saint Petersburg above were corrected with real 2023 Rosstat figures this round)
+["Hong Kong",400000,"China"],["Macau",40000,"China"],
+["Guam",6000,"US Territory"],["US Virgin Islands",4000,"US Territory"],
+["Newfoundland and Labrador",30000,"Canada"],["Prince Edward Island",6000,"Canada"],
+["Northwest Territories",4000,"Canada"],["Yukon",3000,"Canada"],["Nunavut",2000,"Canada"],
+["Western Australia",220000,"Australia"],["Tasmania",25000,"Australia"],
+["Australian Capital Territory",30000,"Australia"],["Northern Territory",20000,"Australia"],
+["Wellington Region",30000,"New Zealand"],["Canterbury (Christchurch)",25000,"New Zealand"],
+["Bern Canton",45000,"Switzerland"],["Vaud Canton",55000,"Switzerland"],
+["Rogaland (Stavanger)",40000,"Norway"],["Trondelag (Trondheim)",25000,"Norway"],
+["Ostergotland",20000,"Sweden"],["Pirkanmaa (Tampere)",20000,"Finland"],
+["Southern Denmark",45000,"Denmark"],["North Denmark",20000,"Denmark"],
+["Northern and Western (Ireland)",15000,"Ireland"],["North Brabant",100000,"Netherlands"],
+["Antwerp Province",90000,"Belgium"],["Upper Austria",60000,"Austria"],["Styria",45000,"Austria"],
+["North Region (Porto)",60000,"Portugal"],["Lower Silesia (Wroclaw)",60000,"Poland"],
+["Pomerania (Gdansk)",40000,"Poland"],["Central Bohemia",30000,"Czech Republic"],
+["Pest County",25000,"Hungary"],["Timis County",15000,"Romania"],["Plovdiv Province",10000,"Bulgaria"],
+["Crete",15000,"Greece"],["Busan",90000,"South Korea"],["Incheon",90000,"South Korea"],
+["Fukuoka",190000,"Japan"],["Hokkaido",180000,"Japan"],["Hyogo (Kobe)",190000,"Japan"],
+["Saitama",220000,"Japan"],["Chiba",200000,"Japan"],["Mato Grosso",45000,"Brazil"],
+["Mato Grosso do Sul",25000,"Brazil"],["Maranhao",20000,"Brazil"],["Piaui",10000,"Brazil"],
+["Alagoas",10000,"Brazil"],["Sergipe",8000,"Brazil"],["Rio Grande do Norte",15000,"Brazil"],
+// 50 more added (round 8) -- prioritizing genuinely high-market-cap entities not yet added
+// High-value: Taiwan (real, major economy), Tyumen Oblast (real, Rosstat 2022), UK constituent nations (⚠ est.)
+["Taiwan",780000,"Taiwan"],["Tyumen Oblast",190000,"Russia"],
+["Scotland",220000,"UK"],["Wales",95000,"UK"],["Northern Ireland",55000,"UK"],
+// Rest -- ⚠ estimates, filling remaining first-level divisions not yet covered
+["Yamalo-Nenets Autonomous Okrug",90000,"Russia"],["Khuzestan",40000,"Iran"],
+["Atyrau Region",45000,"Kazakhstan"],["Zulia",30000,"Venezuela"],["Delta State",30000,"Nigeria"],
+["Goa",15000,"India"],["Tripura",6000,"India"],["Manipur",4000,"India"],["Meghalaya",5000,"India"],
+["Nagaland",3000,"India"],["Mizoram",3000,"India"],["Sikkim",3000,"India"],
+["Arunachal Pradesh",4000,"India"],["Jammu and Kashmir",25000,"India"],["Chandigarh",5000,"India"],
+["Panama City Region",40000,"Panama"],["San Jose Region",30000,"Costa Rica"],
+["Havana Province",20000,"Cuba"],["Santo Domingo",25000,"Dominican Republic"],
+["Copperbelt Province",8000,"Zambia"],["Ashanti Region",15000,"Ghana"],
+["Coastal Region (Mombasa)",10000,"Kenya"],["Katanga (Lubumbashi)",10000,"DR Congo"],
+["Kinshasa",15000,"DR Congo"],["Belgrade",20000,"Serbia"],["Sarajevo Canton",5000,"Bosnia"],
+["Skopje",5000,"North Macedonia"],["Podgorica",3000,"Montenegro"],["Pristina",3000,"Kosovo"],
+["Reykjavik",15000,"Iceland"],["Luxembourg City",45000,"Luxembourg"],["Bishkek",5000,"Kyrgyzstan"],
+["Dushanbe",3000,"Tajikistan"],["Ashgabat",8000,"Turkmenistan"],["Sharjah",45000,"UAE"],
+["Medina Region",30000,"Saudi Arabia"],["Al Ahmadi",25000,"Kuwait"],["Da Nang",12000,"Vietnam"],
+["Haiphong",20000,"Vietnam"],["Can Tho",8000,"Vietnam"],["Hoi An (Quang Nam)",5000,"Vietnam"],
+["Suez Governorate",8000,"Egypt"],["Sfax",8000,"Tunisia"],["Oran",10000,"Algeria"],
+["Marrakesh-Safi",15000,"Morocco"],
+// 50 more added (round 5) -- prioritized real Eurostat NUTS2 data this round
+// Real, sourced (Eurostat NUTS2, 2023/2024)
+["Oberbayern (Upper Bavaria)",378000,"Germany"],["Düsseldorf",291600,"Germany"],
+["Stuttgart",291600,"Germany"],["Darmstadt",288100,"Germany"],
+["Eastern and Midland",291600,"Ireland"],
+// Rest -- ⚠ estimates, not independently verified this session
+["Andalucía",190000,"Spain"],["Comunidad Valenciana",130000,"Spain"],["Basque Country",90000,"Spain"],
+["Rhône-Alpes (Lyon)",130000,"France"],["Provence-Alpes-Côte d'Azur",180000,"France"],
+["Nouvelle-Aquitaine",200000,"France"],["Lazio (Rome)",220000,"Italy"],["Veneto",180000,"Italy"],
+["Emilia-Romagna",170000,"Italy"],["Piedmont (Turin)",140000,"Italy"],
+["Mazovian (Warsaw region)",130000,"Poland"],["South Moravia (Brno)",30000,"Czech Republic"],
+["Vienna region",110000,"Austria"],["Flevoland",20000,"Netherlands"],["Utrecht",90000,"Netherlands"],
+["West Flanders",50000,"Belgium"],["Brussels-Capital",90000,"Belgium"],
+["Southern and Eastern (Ireland)",300000,"Ireland"],["Västra Götaland (Gothenburg)",90000,"Sweden"],
+["Central Denmark",60000,"Denmark"],["Southwest Finland (Turku)",30000,"Finland"],
+["Bratislava region",40000,"Slovakia"],["Ljubljana region",25000,"Slovenia"],["Zagreb",25000,"Croatia"],
+["Sofia",30000,"Bulgaria"],["Cluj (Transylvania)",20000,"Romania"],
+["Thessaloniki (Central Macedonia)",30000,"Greece"],["Lisbon Metro",100000,"Portugal"],
+["Porto (North Region)",60000,"Portugal"],["Novosibirsk Oblast",30000,"Russia"],
+["Chelyabinsk Oblast",30000,"Russia"],["Samara Oblast",30000,"Russia"],
+["Nizhny Novgorod Oblast",30000,"Russia"],["Perm Krai",25000,"Russia"],["Goiás",45000,"Brazil"],
+["Amazonas (Manaus)",35000,"Brazil"],["Pará",35000,"Brazil"],["Distrito Federal (Brasília)",90000,"Brazil"],
+["Puebla",40000,"Mexico"],["Veracruz",45000,"Mexico"],["Coahuila",40000,"Mexico"],
+["Sonora",30000,"Mexico"],["Yucatán",20000,"Mexico"],["Quintana Roo",20000,"Mexico"],
+["Michoacán",20000,"Mexico"]
+];
+
+const avgGdp = states.reduce((s,[,g]) => s + g*1e6, 0) / states.length;
+
+function fmtUSD(n){
+  if (Math.abs(n) >= 1e12) return '$' + (n/1e12).toFixed(3) + 'T';
+  if (Math.abs(n) >= 1e9) return '$' + (n/1e9).toFixed(2) + 'B';
+  if (Math.abs(n) >= 1e6) return '$' + (n/1e6).toFixed(2) + 'M';
+  return '$' + n.toLocaleString(undefined,{maximumFractionDigits:2});
+}
+function fmtPct(n){ return (n>=0?'+':'') + n.toLocaleString(undefined,{maximumFractionDigits:0}) + '%'; }
+
+function showTab(tab){
+  document.getElementById('panelStock').classList.toggle('active', tab==='stock');
+  document.getElementById('panelFut').classList.toggle('active', tab==='fut');
+  document.getElementById('btnStock').classList.toggle('active', tab==='stock');
+  document.getElementById('btnFut').classList.toggle('active', tab==='fut');
+}
+
+const els = {};
+['cpi','mult','capTotal','entry','sharesOutstanding','fedPct','statePct','futSeed','futLeverage','myStockInvestment','myFutInvestment','dailyLimit'].forEach(id => els[id] = document.getElementById(id));
+
+function resetShares(){
+  const capTotal = (parseFloat(els.capTotal.value)||0) * 1e6;
+  const entry = parseFloat(els.entry.value);
+  const sharesPurchased = capTotal / entry;
+  els.sharesOutstanding.value = (sharesPurchased/1e9).toFixed(4);
+  recalcStock();
+}
+
+function recalcStock(){
+  const capTotal = (parseFloat(els.capTotal.value)||0) * 1e6;
+  const entry = parseFloat(els.entry.value);
+  const sharesOutstanding = (parseFloat(els.sharesOutstanding.value)||0) * 1e9;
+  const sharesPurchased = capTotal / entry;
+  const ownershipFrac = sharesOutstanding > 0 ? sharesPurchased / sharesOutstanding : 0;
+
+  const fedPct = (parseFloat(els.fedPct.value)||0) / 100;
+  const statePct = (parseFloat(els.statePct.value)||0) / 100;
+  const publicPct = Math.max(0, 1 - fedPct - statePct);
+
+  let totStockCap = 0, totStockValue = 0, totFedEquity = 0, totStateEquity = 0;
+
+  const rows = states.map(([name, gdpM, country]) => {
+    const gdp = gdpM * 1e6;
+    const marketCap = gdp;
+
+    // shares-based model
+    const priceTarget = sharesOutstanding > 0 ? marketCap / sharesOutstanding : 0;
+    const valueAtTarget = sharesPurchased * priceTarget;
+    const stockGainPct = (valueAtTarget/capTotal - 1) * 100;
+
+    // percentage-ownership model
+    const fedEquity = marketCap * fedPct;
+    const stateEquity = marketCap * statePct;
+
+    totStockCap += marketCap;
+    totStockValue += valueAtTarget;
+    totFedEquity += fedEquity;
+    totStateEquity += stateEquity;
+
+    return {name, country, gdp, marketCap, priceTarget, stockGainPct, fedEquity, stateEquity};
+  });
+
+  rows.sort((a,b) => b.gdp - a.gdp);
+
+  document.getElementById('tbodyStock').innerHTML = rows.map((r,i) => `
+    <tr>
+      <td class="rank">${i+1}</td>
+      <td>${r.name} <span style="color:var(--muted); font-size:10px;">(${r.country})</span></td>
+      <td class="colstock">${fmtUSD(r.marketCap)}</td>
+      <td class="colstock">${(sharesOutstanding/1e9).toFixed(2)}B</td>
+      <td class="colstock">$${r.priceTarget.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
+      <td class="colgain">${fmtPct(r.stockGainPct)}</td>
+      <td class="colgain">${fmtUSD(r.fedEquity)}</td>
+      <td class="colgain">${fmtUSD(r.stateEquity)}</td>
+    </tr>
+  `).join('');
+
+  const totCapAll = capTotal * states.length;
+  const totalStockGain = (totStockValue - totCapAll)/totCapAll*100;
+  const publicFloatVal = totStockCap * publicPct;
+
+  document.getElementById('totStockCap').textContent = fmtUSD(totStockCap);
+  document.getElementById('totStockCapital').textContent = fmtUSD(totCapAll);
+  document.getElementById('ownershipPct').textContent = (ownershipFrac*100).toLocaleString(undefined,{maximumFractionDigits:2}) + '%';
+  document.getElementById('totStockGain').textContent = fmtPct(totalStockGain);
+
+  const sumStockGainPct = rows.reduce((s, r) => s + (isNaN(r.stockGainPct) ? 0 : r.stockGainPct), 0);
+  document.getElementById('sumStockGainPct').textContent = fmtPct(sumStockGainPct);
+  document.getElementById('totFedEquity').textContent = fmtUSD(totFedEquity);
+  document.getElementById('totStateEquity').textContent = fmtUSD(totStateEquity);
+  document.getElementById('publicFloatPct').textContent = (publicPct*100).toFixed(0) + '%';
+  document.getElementById('publicFloatVal').textContent = fmtUSD(publicFloatVal);
+
+  // My portfolio: total investment split evenly across all entities, buying shares at entry price
+  const myTotalInvestment = parseFloat(els.myStockInvestment.value) || 0;
+  const myPerEntity = myTotalInvestment / states.length;
+  let myTotalValue = 0;
+  rows.forEach(r => {
+    const mySharesBought = entry > 0 ? myPerEntity / entry : 0;
+    const myValueThisEntity = mySharesBought * r.priceTarget;
+    myTotalValue += myValueThisEntity;
+  });
+  const myGainPct = myTotalInvestment > 0 ? ((myTotalValue - myTotalInvestment)/myTotalInvestment)*100 : NaN;
+
+  document.getElementById('myStockInvested').textContent = fmtUSD(myTotalInvestment);
+  document.getElementById('myStockPerEntity').textContent = `${fmtUSD(myPerEntity)} per entity`;
+  document.getElementById('myStockValue').textContent = fmtUSD(myTotalValue);
+  document.getElementById('myStockGain').textContent = isNaN(myGainPct) ? 'undefined' : fmtPct(myGainPct);
+}
+
+function recalcFutures(){
+  const cpi = parseFloat(els.cpi.value) || 0;
+  const mult = parseFloat(els.mult.value) || 2000;
+  const seed = parseFloat(els.futSeed.value);
+  const leverage = parseFloat(els.futLeverage.value) || 1;
+  const dailyLimitInput = (parseFloat(els.dailyLimit.value) || 10) / 100;
+  const wGdp = 0.30, wOther = 0.70;
+  const haircut = 0.05 * Math.max(0, cpi - 2.0);
+  const inflationFactor = 1 - haircut;
+
+  let totFutNotional = 0, totSeedDollars = 0;
+  let minEoi = Infinity, maxEoi = -Infinity;
+
+  const rows = states.map(([name, gdpM, country]) => {
+    const gdp = gdpM * 1e6;
+    const gdpIdx = (gdp/avgGdp)*100;
+    const rawEoi = wGdp*gdpIdx + wOther*100;
+    const eoi = rawEoi * inflationFactor;
+    const priceTarget = eoi * mult; // in dollars
+    const gainPct = seed > 0 ? ((priceTarget - seed)/seed)*100 : NaN;
+    const gainLevPct = gainPct * leverage;
+
+    // Liquidity tier: bigger economies assumed to trade a smaller GDP fraction per day
+    // (thinner relative float), which caps their EFFECTIVE daily limit below the stated one.
+    // This is a modeling assumption, not observed data -- no SGA has ever traded.
+    let liquidityTierFactor;
+    if (gdp >= 1e12) liquidityTierFactor = 0.6;       // mega economies (>$1T): slower, deeper market assumed
+    else if (gdp >= 200e9) liquidityTierFactor = 0.8; // large ($200B-$1T)
+    else if (gdp >= 50e9) liquidityTierFactor = 1.0;  // mid ($50B-$200B): baseline
+    else liquidityTierFactor = 1.3;                   // small (<$50B): assumed thinner market, moves faster % per day but with much wider risk of gaps/failure to fill
+
+    const effectiveDailyLimit = dailyLimitInput * liquidityTierFactor;
+    const daysToTarget = (seed > 0 && priceTarget > seed && effectiveDailyLimit > 0)
+      ? Math.log(priceTarget/seed) / Math.log(1+effectiveDailyLimit)
+      : NaN;
+
+    totFutNotional += priceTarget;
+    totSeedDollars += seed;
+    minEoi = Math.min(minEoi, eoi);
+    maxEoi = Math.max(maxEoi, eoi);
+    return {name, country, gdp, eoi, priceTarget, gainPct, gainLevPct, daysToTarget, liquidityTierFactor};
+  });
+
+  rows.sort((a,b) => b.gdp - a.gdp);
+
+  document.getElementById('tbodyFut').innerHTML = rows.map((r,i) => `
+    <tr>
+      <td class="rank">${i+1}</td>
+      <td>${r.name} <span style="color:var(--muted); font-size:10px;">(${r.country})</span></td>
+      <td class="colfut">$${seed.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
+      <td class="colfut">${r.eoi.toFixed(1)}</td>
+      <td class="colfut">$${r.priceTarget.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
+      <td class="colgain">${isNaN(r.gainPct) ? 'undefined (÷0)' : fmtPct(r.gainPct)}</td>
+      <td class="colgain">${isNaN(r.gainLevPct) ? 'undefined (÷0)' : fmtPct(r.gainLevPct)}</td>
+      <td class="colfut">${isNaN(r.daysToTarget) ? '—' : r.daysToTarget.toFixed(1) + ' sessions'}</td>
+    </tr>
+  `).join('');
+
+  const totalGainPct = totSeedDollars > 0 ? ((totFutNotional - totSeedDollars*states.length)/(totSeedDollars*states.length))*100 : NaN;
+  const totalGainLevPct = totalGainPct * leverage;
+
+  document.getElementById('totFutNotional').textContent = fmtUSD(totFutNotional);
+  document.getElementById('eoiRange').textContent = `${minEoi.toFixed(1)} - ${maxEoi.toFixed(1)}`;
+  document.getElementById('inflationOut').textContent = inflationFactor.toFixed(4);
+  document.getElementById('totFutGain').textContent =
+    (isNaN(totalGainPct) ? 'undefined' : fmtPct(totalGainPct)) + ' / ' +
+    (isNaN(totalGainLevPct) ? 'undefined' : fmtPct(totalGainLevPct));
+
+  const sumFutGainPct = rows.reduce((s, r) => s + (isNaN(r.gainPct) ? 0 : r.gainPct), 0);
+  const sumFutGainLevPct = rows.reduce((s, r) => s + (isNaN(r.gainLevPct) ? 0 : r.gainLevPct), 0);
+  document.getElementById('sumFutGainPct').textContent = fmtPct(sumFutGainPct);
+  document.getElementById('sumFutGainLevPct').textContent = fmtPct(sumFutGainLevPct);
+
+  // My portfolio: total investment split evenly as margin across all contracts, at the given leverage
+  const myTotalInvestment = parseFloat(els.myFutInvestment.value) || 0;
+  const myPerEntity = myTotalInvestment / states.length;
+  let myTotalValue = 0;
+  rows.forEach(r => {
+    const myGainFrac = isNaN(r.gainLevPct) ? 0 : r.gainLevPct / 100;
+    myTotalValue += myPerEntity * (1 + myGainFrac);
+  });
+  const myGainPct = myTotalInvestment > 0 ? ((myTotalValue - myTotalInvestment)/myTotalInvestment)*100 : NaN;
+
+  document.getElementById('myFutInvested').textContent = fmtUSD(myTotalInvestment);
+  document.getElementById('myFutPerEntity').textContent = `${fmtUSD(myPerEntity)} margin per contract`;
+  document.getElementById('myFutValue').textContent = fmtUSD(myTotalValue);
+  document.getElementById('myFutGain').textContent = isNaN(myGainPct) ? 'undefined' : fmtPct(myGainPct);
+}
+
+['capTotal','entry','sharesOutstanding','fedPct','statePct','myStockInvestment'].forEach(id => els[id].addEventListener('input', recalcStock));
+['cpi','mult','futSeed','futLeverage','myFutInvestment','dailyLimit'].forEach(id => els[id].addEventListener('input', recalcFutures));
+recalcStock();
+recalcFutures();
+</script>
+</body>
+</html>

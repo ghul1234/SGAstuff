@@ -1,0 +1,1961 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Apple Stock ($AAPL) - SGA Network Trading</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background: #f8fafc;
+            color: #121212;
+            min-height: 100vh;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* ====== HEADER ====== */
+        .header {
+            height: 56px;
+            background: #ffffff;
+            border-bottom: 1px solid #e2e8f0;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 24px;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            flex-wrap: wrap;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-weight: 800;
+            font-size: 17px;
+            color: #0f172a;
+            text-decoration: none;
+            letter-spacing: -0.5px;
+        }
+
+        .logo svg { width: 22px; height: 22px; fill: #00c805; }
+
+        .search-box {
+            background: #f1f5f9;
+            border-radius: 20px;
+            padding: 7px 14px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            width: 200px;
+            border: 1px solid transparent;
+            transition: all 0.2s;
+        }
+
+        .search-box:focus-within {
+            background: #fff;
+            border-color: #00c805;
+            box-shadow: 0 0 0 2px rgba(0,200,5,0.12);
+        }
+
+        .search-input {
+            border: none;
+            background: transparent;
+            outline: none;
+            font-size: 12px;
+            font-weight: 500;
+            color: #0f172a;
+            width: 100%;
+        }
+
+        .exchange-select {
+            border: 1px solid #cbd5e1;
+            border-radius: 16px;
+            padding: 5px 10px;
+            font-size: 11px;
+            font-weight: 600;
+            color: #0f172a;
+            background: #fff;
+            outline: none;
+            cursor: pointer;
+        }
+
+        .user-badge-btn {
+            background: #f1f5f9;
+            border: 1px solid #cbd5e1;
+            border-radius: 16px;
+            padding: 5px 10px;
+            font-size: 11px;
+            font-weight: 600;
+            color: #0f172a;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .user-status-dot {
+            width: 7px; height: 7px; border-radius: 50%; background: #00c805;
+        }
+        .user-status-dot.dot-suspended { background: #f59e0b; }
+        .user-status-dot.dot-banned { background: #ef4444; }
+
+        .legend-btn {
+            background: #00c805;
+            color: white;
+            border: none;
+            border-radius: 16px;
+            padding: 5px 12px;
+            font-weight: 600;
+            font-size: 11px;
+            cursor: pointer;
+            transition: background 0.2s;
+            white-space: nowrap;
+        }
+        .legend-btn:hover { background: #00b004; }
+
+        .header-nav {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+
+        .nav-link {
+            font-size: 12px;
+            font-weight: 600;
+            color: #475569;
+            text-decoration: none;
+            transition: color 0.15s;
+        }
+
+        .nav-link:hover, .nav-link.active { color: #00c805; }
+
+        .compliance-nav-link {
+            color: #00c805;
+            cursor: pointer;
+        }
+
+        /* ====== MAIN GRID ====== */
+        .main-grid {
+            max-width: 1320px;
+            margin: 0 auto;
+            padding: 24px;
+            display: grid;
+            grid-template-columns: 1fr 370px;
+            gap: 32px;
+        }
+
+        @media (max-width: 1150px) {
+            .main-grid {
+                grid-template-columns: 1fr;
+                gap: 24px;
+                padding: 16px;
+            }
+        }
+
+        /* ====== STOCK INFO ====== */
+        .stock-header { margin-bottom: 20px; }
+
+        .stock-title-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 4px;
+        }
+
+        .stock-symbol {
+            font-size: 28px;
+            font-weight: 800;
+            color: #0f172a;
+            letter-spacing: -0.5px;
+        }
+
+        .stock-name {
+            font-size: 14px;
+            color: #64748b;
+            font-weight: 500;
+        }
+
+        .exchange-tag {
+            font-size: 10px;
+            font-weight: 700;
+            background: #f1f5f9;
+            color: #475569;
+            padding: 3px 8px;
+            border-radius: 4px;
+        }
+
+        .stock-price {
+            font-size: 38px;
+            font-weight: 700;
+            color: #0f172a;
+            letter-spacing: -1px;
+            margin-top: 4px;
+        }
+
+        .stock-change-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-top: 4px;
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        .stock-change { color: #00c805; }
+        .stock-change.negative { color: #ef4444; }
+        .stock-change-sub { color: #64748b; font-weight: 500; }
+
+        /* ====== CHART ====== */
+        .chart-area {
+            width: 100%;
+            height: 300px;
+            position: relative;
+            margin-bottom: 8px;
+            background: #ffffff;
+            border-radius: 12px;
+            border: 1px solid #e2e8f0;
+        }
+
+        .timeframe-bar {
+            display: flex;
+            gap: 16px;
+            border-bottom: 1px solid #e2e8f0;
+            padding-bottom: 8px;
+            margin-bottom: 24px;
+        }
+
+        .time-tab {
+            font-size: 12px;
+            font-weight: 700;
+            color: #94a3b8;
+            cursor: pointer;
+            padding-bottom: 6px;
+            border-bottom: 2px solid transparent;
+            background: none;
+            border-top: none; border-left: none; border-right: none;
+            transition: all 0.15s;
+        }
+        .time-tab:hover { color: #0f172a; }
+        .time-tab.active { color: #00c805; border-bottom-color: #00c805; }
+
+        /* ====== ABOUT & METRICS ====== */
+        .section-title {
+            font-size: 20px;
+            font-weight: 700;
+            color: #0f172a;
+            margin-top: 28px;
+            margin-bottom: 12px;
+            border-bottom: 1px solid #e2e8f0;
+            padding-bottom: 10px;
+        }
+
+        .about-text { font-size: 13px; line-height: 1.6; color: #475569; margin-bottom: 12px; }
+
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+            margin-top: 16px;
+        }
+        @media (max-width: 768px) { .metrics-grid { grid-template-columns: repeat(2, 1fr); } }
+
+        .metric-box { display: flex; flex-direction: column; gap: 2px; }
+        .metric-label { font-size: 11px; font-weight: 500; color: #94a3b8; }
+        .metric-value { font-size: 13px; font-weight: 600; color: #0f172a; }
+
+        /* ====== BONDS MARKETPLACE ====== */
+        .bonds-section { margin-top: 28px; border-top: 1px solid #e2e8f0; padding-top: 20px; }
+
+        .bonds-subtitle { font-size: 11px; color: #64748b; margin-bottom: 12px; }
+
+        .bonds-category-tabs { display: flex; gap: 6px; margin-bottom: 14px; flex-wrap: wrap; }
+
+        .bond-cat-btn {
+            background: #f1f5f9;
+            border: 1px solid transparent;
+            border-radius: 14px;
+            padding: 5px 12px;
+            font-size: 11px;
+            font-weight: 600;
+            color: #475569;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .bond-cat-btn.active { background: #0f172a; color: #fff; }
+
+        .bonds-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
+            gap: 12px;
+        }
+
+        .bond-card-item {
+            background: #fff;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            padding: 14px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            gap: 10px;
+            transition: all 0.15s;
+        }
+        .bond-card-item:hover { border-color: #00c805; box-shadow: 0 4px 12px rgba(0,200,5,0.08); }
+        .bond-card-item.selected-active { border-color: #00c805; background: #f0fdf4; }
+
+        .bond-card-header { display: flex; justify-content: space-between; gap: 6px; }
+        .bond-issuer { font-size: 13px; font-weight: 700; color: #0f172a; }
+        .bond-name { font-size: 10px; color: #64748b; }
+
+        .bond-badge { padding: 2px 6px; border-radius: 4px; font-size: 9px; font-weight: 700; }
+        .badge-aapl { background: #dbeafe; color: #1e40af; }
+        .badge-muni { background: #fef3c7; color: #b45309; }
+        .badge-sovereign { background: #f3e8ff; color: #6b21a8; }
+        .badge-corp { background: #dcfce7; color: #166534; }
+
+        .bond-ratings-row { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 2px; }
+        .rating-tag { font-size: 9px; padding: 1px 5px; background: #f1f5f9; border-radius: 3px; font-weight: 600; }
+        .rating-agency { color: #94a3b8; }
+        .rating-value.rating-prime { color: #15803d; }
+        .rating-value.rating-high { color: #0369a1; }
+        .rating-value.rating-upper-medium { color: #b45309; }
+
+        .bond-metrics {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 4px;
+            background: #f8fafc;
+            padding: 6px;
+            border-radius: 6px;
+        }
+        .metric-cell { display: flex; flex-direction: column; }
+        .metric-lbl { font-size: 8px; color: #94a3b8; font-weight: 600; text-transform: uppercase; }
+        .metric-val { font-size: 11px; font-weight: 700; color: #0f172a; }
+        .metric-val.ytm-green { color: #00c805; }
+
+        .bond-buy-btn {
+            width: 100%;
+            background: #fff;
+            color: #00c805;
+            border: 1px solid #00c805;
+            border-radius: 16px;
+            padding: 7px;
+            font-size: 11px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .bond-card-item:hover .bond-buy-btn, .bond-buy-btn.selected-btn { background: #00c805; color: #fff; }
+
+        /* ====== TRADES TABLE ====== */
+        .recent-trades { margin-top: 28px; border-top: 1px solid #e2e8f0; padding-top: 20px; }
+        .trades-header { font-size: 16px; font-weight: 700; color: #0f172a; margin-bottom: 12px; }
+        .trades-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+        .trades-table th { text-align: left; padding: 6px; color: #94a3b8; border-bottom: 1px solid #e2e8f0; font-weight: 600; }
+        .trades-table td { padding: 8px 6px; border-bottom: 1px solid #f1f5f9; }
+        .trade-side-buy { color: #00c805; font-weight: 700; }
+        .trade-side-sell { color: #ef4444; font-weight: 700; }
+
+        /* ====== GAINERS ====== */
+        .top-gainers-section { margin-top: 28px; border-top: 1px solid #e2e8f0; padding-top: 20px; }
+        .gainers-header { font-size: 16px; font-weight: 700; color: #0f172a; margin-bottom: 12px; display: flex; justify-content: space-between; }
+        .gainers-subtitle { font-size: 11px; color: #94a3b8; font-weight: 600; }
+        .gainers-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; }
+        .gainer-item { background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px; display: flex; justify-content: space-between; cursor: pointer; transition: border-color 0.15s; }
+        .gainer-item:hover { border-color: #00c805; }
+        .gainer-info { display: flex; flex-direction: column; }
+        .gainer-symbol { font-weight: 700; font-size: 12px; color: #0f172a; }
+        .gainer-name { font-size: 10px; color: #94a3b8; }
+        .gainer-stats { text-align: right; }
+        .gainer-price { font-weight: 700; font-size: 12px; display: block; }
+        .gainer-change { font-size: 10px; color: #00c805; font-weight: 700; }
+
+        /* ====== RIGHT TRADING PANEL ====== */
+        .trading-panel { position: sticky; top: 72px; }
+
+        .trade-card {
+            border: 1px solid #e2e8f0;
+            border-radius: 14px;
+            padding: 18px;
+            background: #ffffff;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.04);
+        }
+
+        /* Asset Mode Toggle */
+        .asset-mode-selector {
+            display: flex;
+            background: #f1f5f9;
+            padding: 3px;
+            border-radius: 16px;
+            margin-bottom: 14px;
+        }
+        .asset-mode-btn {
+            flex: 1; border: none; background: none; padding: 7px;
+            font-size: 11px; font-weight: 600; color: #94a3b8;
+            border-radius: 14px; cursor: pointer; transition: all 0.15s;
+        }
+        .asset-mode-btn.active { background: #fff; color: #0f172a; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+        .asset-mode-btn.active-bond { background: #00c805; color: #fff; }
+
+        /* Compliance Banner */
+        .user-compliance-banner {
+            background: #fef2f2;
+            border: 1px solid #fca5a5;
+            border-radius: 8px;
+            padding: 10px;
+            margin-bottom: 12px;
+            color: #991b1b;
+        }
+        .banner-alert-title { font-size: 11px; font-weight: 700; display: flex; justify-content: space-between; }
+        .restriction-badge { background: #ef4444; color: #fff; font-size: 8px; padding: 2px 5px; border-radius: 3px; font-weight: 700; }
+        .restriction-badge.temp { background: #f59e0b; }
+        .banner-alert-msg { font-size: 10px; margin-top: 3px; }
+        .banner-alert-timer { font-size: 9px; font-weight: 600; margin-top: 3px; color: #b91c1c; }
+
+        /* Bond Banner */
+        .bond-selected-banner {
+            background: #f0fdf4;
+            border: 1px solid #86efac;
+            border-radius: 8px;
+            padding: 8px;
+            margin-bottom: 10px;
+        }
+
+        /* Trade Tabs */
+        .trade-tabs {
+            display: flex;
+            border-bottom: 1px solid #e2e8f0;
+            margin-bottom: 14px;
+        }
+        .trade-tab {
+            flex: 1;
+            padding: 10px;
+            font-size: 13px;
+            font-weight: 700;
+            color: #94a3b8;
+            background: none;
+            border: none;
+            border-bottom: 2px solid transparent;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .trade-tab.active-buy { color: #00c805; border-bottom-color: #00c805; }
+        .trade-tab.active-sell { color: #ef4444; border-bottom-color: #ef4444; }
+
+        /* Trade Fields */
+        .trade-field {
+            margin-bottom: 12px;
+        }
+
+        .field-label {
+            font-size: 10px;
+            font-weight: 600;
+            color: #94a3b8;
+            text-transform: uppercase;
+            display: block;
+            margin-bottom: 4px;
+        }
+
+        .currency-select {
+            width: 100%;
+            border: 1px solid #cbd5e1;
+            border-radius: 8px;
+            padding: 8px 10px;
+            font-size: 12px;
+            font-weight: 600;
+            color: #0f172a;
+            background: #fff;
+            outline: none;
+            cursor: pointer;
+        }
+
+        .amount-input-wrap {
+            position: relative;
+        }
+
+        .amount-prefix {
+            position: absolute;
+            left: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 14px;
+            font-weight: 600;
+            color: #94a3b8;
+        }
+
+        .amount-input {
+            width: 100%;
+            border: 1px solid #cbd5e1;
+            border-radius: 8px;
+            padding: 10px 48px 10px 28px;
+            font-size: 16px;
+            font-weight: 700;
+            color: #0f172a;
+            text-align: right;
+            outline: none;
+        }
+        .amount-input:focus { border-color: #00c805; }
+
+        .input-suffix {
+            position: absolute;
+            right: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 11px;
+            font-weight: 600;
+            color: #94a3b8;
+        }
+
+        .toggle-method-btn {
+            display: block;
+            width: 100%;
+            text-align: center;
+            font-size: 11px;
+            font-weight: 600;
+            color: #00c805;
+            background: none;
+            border: none;
+            cursor: pointer;
+            margin-top: 4px;
+        }
+
+        /* Fee Breakdown */
+        .fee-section {
+            border-top: 1px solid #f1f5f9;
+            padding-top: 10px;
+            margin-top: 10px;
+        }
+
+        .fee-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: 11px;
+            color: #64748b;
+            margin-bottom: 4px;
+        }
+        .fee-row span:last-child { font-weight: 600; color: #0f172a; }
+
+        .fee-row.total {
+            font-weight: 700;
+            font-size: 13px;
+            color: #0f172a;
+            margin-top: 8px;
+            padding-top: 8px;
+            border-top: 1px solid #e2e8f0;
+        }
+
+        .review-btn {
+            width: 100%;
+            background: #00c805;
+            color: #ffffff;
+            font-size: 14px;
+            font-weight: 700;
+            border-radius: 20px;
+            padding: 12px;
+            border: none;
+            cursor: pointer;
+            margin-top: 14px;
+            transition: all 0.15s;
+            box-shadow: 0 2px 4px rgba(0,200,5,0.2);
+        }
+        .review-btn:hover { background: #00b004; }
+        .review-btn.btn-sell { background: #ef4444; box-shadow: 0 2px 4px rgba(239,68,68,0.2); }
+        .review-btn.btn-sell:hover { background: #dc2626; }
+
+        /* Buying Power */
+        .buying-power-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: 11px;
+            font-weight: 600;
+            color: #0f172a;
+            border-top: 1px solid #f1f5f9;
+            padding-top: 10px;
+            margin-top: 10px;
+        }
+
+        /* SGA Network Info */
+        .network-stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            margin-top: 14px;
+        }
+        .stat-box {
+            background: #eff6ff;
+            border-radius: 8px;
+            padding: 8px;
+            text-align: center;
+        }
+        .stat-label { font-size: 9px; font-weight: 600; color: #3b82f6; text-transform: uppercase; }
+        .stat-value { font-size: 12px; font-weight: 700; color: #1e40af; }
+
+        .network-ledger {
+            margin-top: 14px;
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 10px;
+        }
+        .ledger-title { font-size: 11px; font-weight: 700; color: #0f172a; margin-bottom: 6px; }
+        .ledger-row { display: flex; justify-content: space-between; font-size: 10px; padding: 3px 0; color: #64748b; }
+        .ledger-row.active { font-weight: 700; color: #00c805; }
+
+        .settlement-info {
+            margin-top: 10px;
+            font-size: 9px;
+            color: #94a3b8;
+            text-align: center;
+            font-weight: 500;
+        }
+
+        /* ====== MODAL ====== */
+        .modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.45); backdrop-filter: blur(4px); z-index: 1000; align-items: center; justify-content: center; }
+        .modal.open { display: flex; }
+        .modal-card { background: #fff; border-radius: 14px; width: 92%; max-width: 700px; padding: 20px; position: relative; max-height: 90vh; overflow-y: auto; box-shadow: 0 10px 40px rgba(0,0,0,0.12); }
+        .modal-close { position: absolute; right: 14px; top: 14px; border: none; background: #f1f5f9; border-radius: 50%; width: 26px; height: 26px; cursor: pointer; font-weight: 700; font-size: 12px; }
+        .modal-title { font-size: 16px; font-weight: 700; margin-bottom: 10px; }
+        .modal-body { font-size: 12px; color: #475569; line-height: 1.6; }
+        .modal-highlight { background: #f0fdf4; border-left: 3px solid #00c805; padding: 8px 12px; border-radius: 4px; margin: 10px 0; font-size: 11px; }
+
+        /* Governance Grid */
+        .gov-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 10px; }
+        @media (max-width: 640px) { .gov-grid { grid-template-columns: 1fr; } }
+        .gov-box { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px; }
+        .gov-box-title { font-size: 11px; font-weight: 700; margin-bottom: 6px; }
+        .gov-form-group { margin-bottom: 8px; }
+        .gov-label { font-size: 9px; font-weight: 700; color: #94a3b8; display: block; margin-bottom: 2px; text-transform: uppercase; }
+        .gov-input, .gov-select { width: 100%; padding: 5px 7px; border: 1px solid #cbd5e1; border-radius: 5px; font-size: 11px; outline: none; font-family: inherit; }
+        .gov-input:focus, .gov-select:focus { border-color: #00c805; }
+
+        .test-profiles-list { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 3px; }
+        .test-profile-chip {
+            background: #e2e8f0;
+            border: none;
+            border-radius: 10px;
+            padding: 3px 7px;
+            font-size: 9px;
+            font-weight: 600;
+            cursor: pointer;
+            color: #334155;
+            font-family: inherit;
+            transition: all 0.15s;
+        }
+        .test-profile-chip:hover { background: #cbd5e1; }
+        .test-profile-chip.active-chip { background: #0f172a; color: #fff; }
+
+        .gov-action-btn {
+            width: 100%;
+            background: #ef4444;
+            color: #fff;
+            border: none;
+            border-radius: 14px;
+            padding: 8px;
+            font-weight: 700;
+            font-size: 11px;
+            cursor: pointer;
+            margin-top: 4px;
+            font-family: inherit;
+            transition: background 0.15s;
+        }
+        .gov-action-btn:hover { background: #dc2626; }
+        .gov-action-btn.lift-btn { background: #00c805; }
+        .gov-action-btn.lift-btn:hover { background: #00b004; }
+
+        .matrix-table { width: 100%; border-collapse: collapse; font-size: 10px; }
+        .matrix-table th { text-align: left; padding: 3px; color: #94a3b8; border-bottom: 1px solid #e2e8f0; font-weight: 600; }
+        .matrix-table td { padding: 3px; border-bottom: 1px solid #f1f5f9; }
+        .status-pill-ok { color: #15803d; background: #dcfce7; padding: 1px 5px; border-radius: 3px; font-weight: 600; font-size: 9px; }
+        .status-pill-banned { color: #991b1b; background: #fee2e2; padding: 1px 5px; border-radius: 3px; font-weight: 600; font-size: 9px; }
+        .status-pill-temp { color: #92400e; background: #fef3c7; padding: 1px 5px; border-radius: 3px; font-weight: 600; font-size: 9px; }
+
+        .matrix-tab-btn {
+            background: rgba(15, 23, 42, 0.05);
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            padding: 3px 8px;
+            font-size: 10px;
+            font-weight: 600;
+            color: #64748b;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+        .matrix-tab-btn:hover { background: rgba(15, 23, 42, 0.1); color: #0f172a; }
+        .matrix-tab-btn.active { background: #0f172a; border-color: #0f172a; color: #ffffff; }
+
+        .gov-row-action-btn {
+            border: none;
+            border-radius: 4px;
+            padding: 2px 7px;
+            font-size: 9px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+        .gov-row-action-btn.ban { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+        .gov-row-action-btn.ban:hover { background: #ef4444; color: #ffffff; }
+        .gov-row-action-btn.lift { background: #dcfce7; color: #15803d; border: 1px solid #86efac; }
+        .gov-row-action-btn.lift:hover { background: #10b981; color: #ffffff; }
+    </style>
+</head>
+<body>
+
+    <!-- Header -->
+    <header class="header">
+        <div class="header-left">
+            <a href="#" class="logo">
+                <svg viewBox="0 0 24 24"><path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z"/></svg>
+                <span>SGA</span>
+            </a>
+
+            <div class="search-box">
+                <span style="color:#94a3b8; font-size:11px;">🔍</span>
+                <input type="text" class="search-input" placeholder="Search stocks, bonds..." value="apple">
+            </div>
+
+            <select class="exchange-select" id="exchange-select" onchange="changeExchange(this.value)">
+                <option value="NASDAQ">NASDAQ - USA</option>
+                <option value="NYSE">NYSE - USA</option>
+                <option value="LSE">LSE - UK</option>
+                <option value="XETRA">XETRA - Germany</option>
+                <option value="TSE">TSE - Canada</option>
+                <option value="HKEX">HKEX - Hong Kong</option>
+                <option value="TADAWUL">Tadawul - Saudi Arabia</option>
+                <option value="NSE">NSE - India</option>
+                <option value="ASX">ASX - Australia</option>
+                <option value="SIX">SIX - Switzerland</option>
+                <option value="BM">BME - Spain</option>
+                <option value="TSE_JP">TSE - Japan</option>
+            </select>
+        </div>
+
+        <div class="header-nav">
+            <a href="#" class="nav-link active">Investing</a>
+            <a href="#" class="nav-link" onclick="toggleGainersModal(true)">📈 Top Gainers</a>
+            <a href="#" class="nav-link">Crypto</a>
+            <a href="#" class="nav-link">Portfolio</a>
+            <a href="#" class="nav-link compliance-nav-link" onclick="toggleGovernanceModal(true)">🛡️ Compliance</a>
+            <button class="legend-btn" onclick="toggleModal(true)">SGA Guidelines ↗</button>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main-grid">
+
+        <!-- Left Area -->
+        <div>
+            <!-- Stock Info -->
+            <div class="stock-header">
+                <div class="stock-title-row">
+                    <span class="stock-symbol" id="stock-symbol">AAPL</span>
+                    <span class="stock-name" id="stock-name">Apple Inc.</span>
+                    <span class="exchange-tag" id="stock-exchange-tag">NASDAQ (USA)</span>
+                    <span id="active-exchange-flag" style="font-size:18px;">🇺🇸</span>
+                </div>
+                <div class="stock-price" id="stock-price">$310.45</div>
+                <div class="stock-change-row">
+                    <span class="stock-change" id="stock-change">+$1.10 (+0.36%) Today</span>
+                    <span class="stock-change-sub" id="stock-price-converted">≈ $310.45 USD</span>
+                </div>
+            </div>
+
+            <!-- Chart -->
+            <div class="chart-area" id="chart-svg-container"></div>
+            <div class="timeframe-bar">
+                <button class="time-tab active" onclick="switchTimeframe('1D', this)">1D</button>
+                <button class="time-tab" onclick="switchTimeframe('1W', this)">1W</button>
+                <button class="time-tab" onclick="switchTimeframe('1M', this)">1M</button>
+                <button class="time-tab" onclick="switchTimeframe('3M', this)">3M</button>
+                <button class="time-tab" onclick="switchTimeframe('YTD', this)">YTD</button>
+                <button class="time-tab" onclick="switchTimeframe('1Y', this)">1Y</button>
+                <button class="time-tab" onclick="switchTimeframe('ALL', this)">ALL</button>
+            </div>
+
+            <!-- About -->
+            <h2 class="section-title">About</h2>
+            <p class="about-text">Apple, Inc. engages in the design, manufacture, and sale of smartphones, personal computers, tablets, wearables and accessories, and other varieties of related services.</p>
+            <div class="metrics-grid">
+                <div class="metric-box"><span class="metric-label">CEO</span><span class="metric-value">Timothy Donald Cook</span></div>
+                <div class="metric-box"><span class="metric-label">Employees</span><span class="metric-value">161,000</span></div>
+                <div class="metric-box"><span class="metric-label">Headquarters</span><span class="metric-value">Cupertino, CA</span></div>
+                <div class="metric-box"><span class="metric-label">Founded</span><span class="metric-value">1976</span></div>
+            </div>
+
+            <!-- Key Stats -->
+            <h2 class="section-title">Key Statistics</h2>
+            <div class="metrics-grid">
+                <div class="metric-box"><span class="metric-label">Market Cap</span><span class="metric-value">$2.84T</span></div>
+                <div class="metric-box"><span class="metric-label">P/E Ratio</span><span class="metric-value">28.52</span></div>
+                <div class="metric-box"><span class="metric-label">52W High</span><span class="metric-value">$199.62</span></div>
+                <div class="metric-box"><span class="metric-label">52W Low</span><span class="metric-value">$164.08</span></div>
+                <div class="metric-box"><span class="metric-label">Volume</span><span class="metric-value">52.48M</span></div>
+                <div class="metric-box"><span class="metric-label">Avg Volume</span><span class="metric-value">58.21M</span></div>
+                <div class="metric-box"><span class="metric-label">Dividend Yield</span><span class="metric-value">0.55%</span></div>
+                <div class="metric-box"><span class="metric-label">Open Price</span><span class="metric-value">$318.50</span></div>
+            </div>
+
+            <!-- Bond Marketplace -->
+            <div class="bonds-section" id="bonds-marketplace">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                    <h2 class="section-title" style="margin:0; border:none; padding:0;">📜 Fixed Income & Bond Marketplace</h2>
+                </div>
+                <div class="bonds-subtitle">Apple Corporate Notes, Exchange Sovereign Debt & Local Municipal Bonds</div>
+                <div class="bonds-category-tabs">
+                    <button class="bond-cat-btn active" onclick="filterBondsCategory('all')">All Bonds</button>
+                    <button class="bond-cat-btn" onclick="filterBondsCategory('aapl')">🍏 Apple Debt</button>
+                    <button class="bond-cat-btn" onclick="filterBondsCategory('muni')">🏛️ Municipal</button>
+                    <button class="bond-cat-btn" onclick="filterBondsCategory('sovereign')">👑 Sovereign</button>
+                    <button class="bond-cat-btn" onclick="filterBondsCategory('corp')">🏢 Corporate</button>
+                </div>
+                <div class="bonds-grid" id="bonds-grid-container"></div>
+            </div>
+
+            <!-- Trades Table -->
+            <div class="recent-trades">
+                <div class="trades-header">📊 Live Network Settlement Activity</div>
+                <table class="trades-table">
+                    <thead><tr><th>Time</th><th>Routing</th><th>Side</th><th>Price</th><th>Qty</th><th>Total</th></tr></thead>
+                    <tbody id="recent-trades-body"></tbody>
+                </table>
+            </div>
+
+            <!-- Top Gainers -->
+            <div class="top-gainers-section">
+                <div class="gainers-header">
+                    <span>📈 Top Gainers</span>
+                    <span class="gainers-subtitle" id="gainers-exchange-label">NASDAQ</span>
+                </div>
+                <div class="gainers-list" id="top-gainers-list"></div>
+            </div>
+        </div>
+
+        <!-- Right Trading Panel -->
+        <div class="trading-panel">
+            <div class="trade-card">
+
+                <!-- Compliance Banner -->
+                <div class="user-compliance-banner" id="user-compliance-banner" style="display: none;">
+                    <div class="banner-alert-title">
+                        <span>⛔ EXCHANGE TRADING SUSPENDED</span>
+                        <span class="restriction-badge" id="restriction-type-badge">Temp Suspension</span>
+                    </div>
+                    <div class="banner-alert-msg" id="restriction-reason-msg">Restricted</div>
+                    <div class="banner-alert-timer" id="restriction-timer-msg">⏳ Active</div>
+                </div>
+
+                <!-- Asset Mode -->
+                <div class="asset-mode-selector">
+                    <button class="asset-mode-btn active" id="mode-stock-btn" onclick="switchAssetMode('stock')">📈 Stock (AAPL)</button>
+                    <button class="asset-mode-btn" id="mode-bond-btn" onclick="switchAssetMode('bonds')">📜 Fixed Income</button>
+                </div>
+
+                <!-- Bond Banner -->
+                <div class="bond-selected-banner" id="bond-selected-banner" style="display: none;">
+                    <div style="font-size:11px; font-weight:700; color:#166534;" id="banner-bond-name">Bond</div>
+                    <span class="bond-badge badge-aapl" id="banner-bond-badge">Apple Inc.</span>
+                    <div style="font-size:9.5px; color:#15803d; margin-top:2px;" id="banner-bond-sub">Details</div>
+                    <div id="banner-bond-ratings" style="display:flex; gap:3px; margin-top:3px;"></div>
+                </div>
+
+                <!-- Bond Dropdown -->
+                <div class="trade-field" id="bond-selector-field" style="display: none;">
+                    <span class="field-label">Select Bond Instrument</span>
+                    <select class="currency-select" id="bond-instrument-select" onchange="selectBondFromDropdown(this.value)"></select>
+                </div>
+
+                <!-- Buy/Sell Tabs -->
+                <div class="trade-tabs">
+                    <button class="trade-tab active-buy" id="tab-buy" onclick="switchTab('buy')">Buy AAPL</button>
+                    <button class="trade-tab" id="tab-sell" onclick="switchTab('sell')">Sell AAPL</button>
+                </div>
+
+                <!-- Currency -->
+                <div class="trade-field">
+                    <span class="field-label">Payment Currency</span>
+                    <select class="currency-select" id="payment-currency" onchange="setCurrency(this.value)">
+                        <option value="USD">USD - US Dollar</option>
+                        <option value="EUR">EUR - Euro</option>
+                        <option value="GBP">GBP - British Pound</option>
+                        <option value="JPY">JPY - Japanese Yen</option>
+                        <option value="CAD">CAD - Canadian Dollar</option>
+                        <option value="AUD">AUD - Australian Dollar</option>
+                        <option value="CHF">CHF - Swiss Franc</option>
+                        <option value="SAR">SAR - Saudi Riyal</option>
+                        <option value="HKD">HKD - Hong Kong Dollar</option>
+                        <option value="INR">INR - Indian Rupee</option>
+                    </select>
+                </div>
+
+                <!-- Amount -->
+                <div class="trade-field">
+                    <span class="field-label" id="input-label">Investment Amount</span>
+                    <div class="amount-input-wrap">
+                        <span class="amount-prefix" id="input-prefix">$</span>
+                        <input type="text" class="amount-input" id="trade-amount" value="1,000.00" oninput="handleInput(this)" onblur="formatInput(this)">
+                        <span class="input-suffix" id="input-suffix">USD</span>
+                    </div>
+                    <button class="toggle-method-btn" id="toggle-method-btn" onclick="toggleOrderMethod()">Switch to Shares</button>
+                </div>
+
+                <!-- Fee Breakdown -->
+                <div class="fee-section">
+                    <div class="fee-row">
+                        <span id="estimated-result-label">Est. Shares</span>
+                        <span id="fee-shares-qty">0</span>
+                    </div>
+                    <div class="fee-row">
+                        <span>Converted Valuation</span>
+                        <span id="fee-converted-valuation">$1,000.00 USD</span>
+                    </div>
+                    <div class="fee-row">
+                        <span>FX Fee</span>
+                        <span id="fee-conversion-charge">$0.00</span>
+                    </div>
+                    <div class="fee-row total" id="total-row">
+                        <span id="total-cost-label">Total Debit</span>
+                        <span id="fee-total-cost">$1,000.50 USD</span>
+                    </div>
+                </div>
+
+                <!-- Execute Button -->
+                <button class="review-btn" id="action-btn" onclick="executeTrade()">Buy Order</button>
+
+                <!-- Buying Power -->
+                <div class="buying-power-row">
+                    <span>SGA Reserve Balance</span>
+                    <span id="buying-power-reserves">$500,000,000.00 USD</span>
+                </div>
+                <div class="buying-power-row">
+                    <span>Your Holdings</span>
+                    <span id="user-shares-holding">154.2850 Shares</span>
+                </div>
+                <div class="buying-power-row">
+                    <span>Bond Holdings (Par)</span>
+                    <span id="user-bonds-holding">$0.00 Par</span>
+                </div>
+
+                <div class="account-type" style="display:flex; justify-content:space-between; align-items:center; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:8px 10px; margin-top:10px; font-size:11px; font-weight:600; color:#0f172a; cursor:pointer;">
+                    <span class="account-label">SGA Reserves - Sovereign Access</span>
+                    <span class="account-value">▼</span>
+                </div>
+
+                <button class="trade-options-btn" style="width:100%; border:1px solid #0f172a; background:transparent; color:#0f172a; font-size:12px; font-weight:700; border-radius:18px; padding:10px; cursor:pointer; margin-top:10px; transition:background 0.15s;" onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='transparent'">Trade Options</button>
+                <button class="add-to-lists-btn" style="width:100%; border:1px solid #cbd5e1; background:transparent; color:#475569; font-size:12px; font-weight:600; border-radius:18px; padding:8px; cursor:pointer; margin-top:6px; transition:background 0.15s;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='transparent'">+ Add to Watchlist</button>
+
+                <!-- SGA Network Stats -->
+                <div class="network-stats">
+                    <div class="stat-box">
+                        <div class="stat-label">FX Rate</div>
+                        <div class="stat-value" id="fx-rate">1.00 USD</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-label">Clearing</div>
+                        <div class="stat-value">T+0</div>
+                    </div>
+                </div>
+
+                <!-- Ledger -->
+                <div class="network-ledger">
+                    <div class="ledger-title">🏦 SGA Network Reserves</div>
+                    <div id="ledger-rows-container"></div>
+                </div>
+
+                <div class="settlement-info">⚡ Atomic Settlement • Cross-Border FX Routing • SGA Reserves Active</div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Governance Modal -->
+    <div class="modal" id="governance-modal" onclick="toggleGovernanceModal(false)">
+        <div class="modal-card" style="max-width:850px;" onclick="event.stopPropagation()">
+            <button class="modal-close" onclick="toggleGovernanceModal(false)">✕</button>
+            <h2 class="modal-title" style="color: #0f172a;">🛡️ SGA Network Governance & Exchange Compliance</h2>
+            <div class="modal-body">
+                <p>Enforce exchange regulatory rules, ban non-compliant exchanges network-wide, or suspend SGA IDs across settlement channels.</p>
+
+                <div class="gov-grid">
+                    <!-- Left: Enforcement Form -->
+                    <div class="gov-box">
+                        <div class="gov-box-title">⚖️ Issue Governance Enforcement</div>
+
+                        <div class="gov-form-group">
+                            <label class="gov-label">Enforcement Target Scope</label>
+                            <select class="gov-select" id="gov-target-scope" onchange="handleScopeChange(this.value)">
+                                <option value="exchange" selected>🏛️ BAN / SUSPEND EXCHANGE (Network-Wide)</option>
+                                <option value="user">👤 RESTRICT USER ID (Trader Restriction)</option>
+                            </select>
+                        </div>
+
+                        <div id="gov-user-fields-container" style="display:none;">
+                            <div class="gov-form-group">
+                                <label class="gov-label">Target SGA User ID</label>
+                                <input type="text" class="gov-input" id="gov-target-user-id" value="SGA-USR-9042" placeholder="e.g. SGA-USR-8812" oninput="handleUserInputChanges()">
+                            </div>
+
+                            <div class="gov-form-group">
+                                <label class="gov-label">Target User Name</label>
+                                <input type="text" class="gov-input" id="gov-target-user-name" value="Hamza (Primary Trader)" placeholder="e.g. Quantum Arbitrage Fund" oninput="handleUserInputChanges()">
+                            </div>
+
+                            <div class="gov-form-group">
+                                <label class="gov-label">🧪 Quick Test Profiles</label>
+                                <div class="test-profiles-list" id="test-profiles-list"></div>
+                            </div>
+                        </div>
+
+                        <div class="gov-form-group">
+                            <label class="gov-label" id="gov-target-exchange-label">Target Exchange (Network Action)</label>
+                            <select class="gov-select" id="gov-target-exchange-select">
+                                <option value="ALL">ALL EXCHANGES (Global Network Action)</option>
+                                <option value="NASDAQ">NASDAQ</option>
+                                <option value="NYSE">NYSE</option>
+                                <option value="LSE">LSE</option>
+                                <option value="XETRA">XETRA</option>
+                                <option value="TSE">TSE - Canada</option>
+                                <option value="HKEX">HKEX</option>
+                                <option value="TADAWUL">Tadawul</option>
+                                <option value="NSE">NSE - India</option>
+                                <option value="ASX">ASX</option>
+                                <option value="SIX">SIX</option>
+                                <option value="BM">BME</option>
+                                <option value="TSE_JP">TSE - Japan</option>
+                            </select>
+                        </div>
+
+                        <div class="gov-form-group">
+                            <label class="gov-label">Enforcement Type</label>
+                            <select class="gov-select" id="gov-enforcement-type" onchange="toggleDurationField(this.value)">
+                                <option value="permanent" selected>🔴 Ban Exchange Network-Wide (Permanent)</option>
+                                <option value="temp">⏳ Suspend Exchange Network-Wide (Temporary)</option>
+                                <option value="lift">🟢 Lift Ban / Reinstate Exchange</option>
+                                <option value="remove">🗑️ Remove Exchange from Registry</option>
+                            </select>
+                        </div>
+
+                        <div class="gov-form-group" id="gov-duration-group" style="display:none;">
+                            <label class="gov-label">Suspension Duration</label>
+                            <select class="gov-select" id="gov-suspension-duration">
+                                <option value="1">1 Hour</option>
+                                <option value="24" selected>24 Hours</option>
+                                <option value="168">7 Days</option>
+                                <option value="720">30 Days</option>
+                            </select>
+                        </div>
+
+                        <div class="gov-form-group">
+                            <label class="gov-label">Violation Reason</label>
+                            <select class="gov-select" id="gov-violation-reason">
+                                <option value="Regulatory Non-Compliance & Order Breach">Regulatory Non-Compliance</option>
+                                <option value="Clearing Reserve Insolvency & Liquidity Default">Clearing Reserve Insolvency</option>
+                                <option value="Market Manipulation / Spoofing / Illegal Arbitrage">Wash Trading / Spoofing</option>
+                                <option value="Cross-Border Latency & Settlement Exploits">Cross-Border Latency Abuse</option>
+                                <option value="KYC / AML Non-Compliance">KYC / AML Non-Compliance</option>
+                                <option value="Sovereign Mandate & Sanction Compliance">Sovereign Mandate Disruption</option>
+                            </select>
+                        </div>
+
+                        <button class="gov-action-btn" id="gov-apply-btn" type="button" style="background:#dc2626;" onclick="applyGovernanceAction()">Ban Exchange Network-Wide</button>
+                        <div id="gov-toast-feedback" style="display:none; margin-top:6px; padding:6px; border-radius:5px; font-size:10px; font-weight:600; text-align:center;"></div>
+                    </div>
+
+                    <!-- Right: Matrix -->
+                    <div class="gov-box">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; gap:6px;">
+                            <div class="gov-box-title" style="margin:0;">📋 Compliance Matrix</div>
+                            <div style="display:flex; gap:4px;">
+                                <button type="button" id="gov-matrix-tab-exchange" class="matrix-tab-btn active" onclick="switchGovMatrixTab('exchange')">🏛️ Exchange Network</button>
+                                <button type="button" id="gov-matrix-tab-user" class="matrix-tab-btn" onclick="switchGovMatrixTab('user')">👤 User ID</button>
+                            </div>
+                        </div>
+                        <div id="gov-matrix-user-subtitle" style="font-size:10px; color:#94a3b8; margin-bottom:6px; display:none;">
+                            Active User: <strong id="modal-active-user-label" style="color:#0f172a;">SGA-USR-9042</strong>
+                        </div>
+                        <div style="max-height: 250px; overflow-y: auto;">
+                            <table class="matrix-table">
+                                <thead id="gov-matrix-thead"></thead>
+                                <tbody id="gov-matrix-tbody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="modal-highlight" style="margin-top: 10px;">
+                    <strong>SGA Ledger Enforcement:</strong> Issuing an exchange or user ban broadcasts a signed compliance flag across the SGA clearing network, rejecting settlement requests instantly.
+                </div>
+            </div>
+        </div>
+    </div>s for banned IDs instantly.
+                </div>
+            </div>
+        </div>
+    <!-- SGA Guidelines Modal -->
+    <div class="modal" id="guidelines-modal" onclick="toggleModal(false)">
+        <div class="modal-card" onclick="event.stopPropagation()">
+            <button class="modal-close" onclick="toggleModal(false)">✕</button>
+            <h2 class="modal-title" style="color:#0f172a;">🌐 SGA Network Trading Guidelines</h2>
+            <div class="modal-body">
+                <p>The <strong>SGA Network</strong> facilitates direct multi-currency trading of equities and bonds without requiring USD as a manual intermediary clearing channel.</p>
+                <div class="modal-highlight">
+                    <strong>Atomic T+0 Settlement:</strong> Trades settle instantly against corresponding localized liquidity reserves, bypassing delayed wire clearings.
+                </div>
+                <p><strong>Liquidity Rules:</strong> Swapping between sovereign currencies incurs a standard transaction charge of 10 basis points (0.10%). A flat $0.50 settlement fee covers ledger clearance.</p>
+                <p>By selecting a payment currency, the interface dynamically quotes, calculates FX fees, and routes the trade directly via optimal settlement tranches.</p>
+            </div>
+        </div>
+    <!-- Dedicated Top Gainers Modal -->
+    <div class="modal" id="gainers-modal" onclick="toggleGainersModal(false)">
+        <div class="modal-card" style="max-width: 820px;" onclick="event.stopPropagation()">
+            <button class="modal-close" onclick="toggleGainersModal(false)">✕</button>
+            <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #e2e8f0; padding-bottom:10px; margin-bottom:12px;">
+                <h2 class="modal-title" style="margin:0; color:#0f172a; display:flex; align-items:center; gap:8px;">
+                    📈 Global & Exchange Top Gainers Directory
+                </h2>
+                <span id="gainers-modal-flag" style="font-size:22px;">🌐</span>
+            </div>
+
+            <!-- Filter controls -->
+            <div style="display:flex; gap:10px; margin-bottom:12px; flex-wrap:wrap; align-items:center;">
+                <div style="flex:1; min-width:200px;">
+                    <input type="text" class="gov-input" id="gainers-search-input" placeholder="🔍 Search stock symbol or name..." oninput="renderGainersModal()">
+                </div>
+                <select class="gov-select" id="gainers-exchange-filter" style="width:220px;" onchange="renderGainersModal()">
+                    <option value="CURRENT" selected>🎯 Current Exchange Stocks</option>
+                    <option value="ALL">🌐 All Exchanges (Global Top Gainers)</option>
+                    <option value="NASDAQ">🇺🇸 NASDAQ (USA)</option>
+                    <option value="NYSE">🇺🇸 NYSE (USA)</option>
+                    <option value="LSE">🇬🇧 LSE (UK)</option>
+                    <option value="XETRA">🇩🇪 XETRA (Germany)</option>
+                    <option value="TSE">🇨🇦 TSE (Canada)</option>
+                    <option value="HKEX">🇭🇰 HKEX (Hong Kong)</option>
+                    <option value="TADAWUL">🇸🇦 Tadawul (Saudi Arabia)</option>
+                    <option value="NSE">🇮🇳 NSE (India)</option>
+                    <option value="ASX">🇦🇺 ASX (Australia)</option>
+                    <option value="SIX">🇨🇭 SIX (Switzerland)</option>
+                    <option value="BM">🇪🇸 BME (Spain)</option>
+                    <option value="TSE_JP">🇯🇵 TSE (Japan)</option>
+                </select>
+            </div>
+
+            <div style="max-height: 420px; overflow-y: auto;">
+                <table class="matrix-table" style="font-size:12px;">
+                    <thead>
+                        <tr>
+                            <th style="padding:8px;">Exchange</th>
+                            <th style="padding:8px;">Ticker / Company</th>
+                            <th style="padding:8px;">Price (Local)</th>
+                            <th style="padding:8px;">USD Valuation</th>
+                            <th style="padding:8px;">24h Gain</th>
+                            <th style="padding:8px; text-align:right;">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="gainers-modal-tbody">
+                        <!-- Rendered dynamically by JS -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+<script>
+// ==================================================
+// GLOBAL STATE
+// ==================================================
+let currentUserId = 'SGA-USR-9042';
+
+const sgaUsers = {
+    'SGA-USR-9042': { id: 'SGA-USR-9042', name: 'Hamza (Primary Trader)', type: 'Institutional', restrictions: { 'LSE': { type: 'temp', reason: 'Illegal Arbitrage (Cross-Market Latency Abuse)', expiresAt: new Date(Date.now() + 24*3600*1000).toISOString() } } },
+    'SGA-USR-1092': { id: 'SGA-USR-1092', name: 'High-Freq Algo Bot #4', type: 'AMM', restrictions: { 'NASDAQ': { type: 'permanent', reason: 'Wash Trading / Spoofing / Manipulation', expiresAt: null } } },
+    'SGA-USR-5521': { id: 'SGA-USR-5521', name: 'Global Arbitrage Fund', type: 'Hedge Fund', restrictions: { 'HKEX': { type: 'temp', reason: 'Liquidity Reserve Overdraft Default', expiresAt: new Date(Date.now() + 7*24*3600*1000).toISOString() } } }
+};
+
+const testProfiles = [
+    { id: 'SGA-USR-9042', name: 'Hamza (Primary Trader)' },
+    { id: 'SGA-USR-1092', name: 'Algo HFT Bot #4' },
+    { id: 'SGA-USR-5521', name: 'Global Arbitrage Fund' },
+    { id: 'SGA-USR-7734', name: 'Shadow Latency Trader' },
+    { id: 'SGA-USR-4099', name: 'Vanguard Institutional' },
+    { id: 'SGA-USR-6120', name: 'Cross-Market Spoofer' }
+];
+
+const fxRates = { USD:1, EUR:0.9215, GBP:0.789, JPY:156.45, CAD:1.365, AUD:1.512, CHF:0.898, CNY:7.245, HKD:7.812, SGD:1.349, SEK:10.52, KRW:1378.5, INR:83.45, SAR:3.75, AED:3.6725 };
+const currencySymbols = { USD:'$', EUR:'€', GBP:'£', JPY:'¥', CAD:'CA$', AUD:'A$', CHF:'Fr.', CNY:'¥', HKD:'HK$', SGD:'S$', SEK:'kr', KRW:'₩', INR:'₹', SAR:'SR ', AED:'AED ' };
+const sgaReserves = { USD:500000000, EUR:460750000, GBP:394500000, JPY:78225000000, CAD:682500000, AUD:756000000, CHF:449000000, CNY:3622500000, HKD:3906000000, SGD:674500000, SEK:5260000000, KRW:689250000000, INR:41725000000, SAR:1875000000, AED:1836250000 };
+
+let currentStock = { symbol:'AAPL', name:'Apple Inc.', price:310.45, change:1.10, changePercent:0.36 };
+let currentExchange = 'NASDAQ';
+let currentPrice = 310.45;
+let prevPrice = 309.35;
+let activeAssetMode = 'stock';
+let selectedBondId = 'AAPL-2043';
+let activeBondCategory = 'all';
+let userBondsPar = 0;
+let userShares = 154.285;
+let activeTab = 'buy';
+let activeCurrency = 'USD';
+let orderMethod = 'currency';
+let priceHistory = [];
+let timeLabels = [];
+let recentTrades = [];
+
+// Exchange Data
+const exchangeData = {
+    NASDAQ: { name:'NASDAQ', country:'USA', currency:'USD', flag:'🇺🇸', stocks:[{symbol:'AAPL',name:'Apple Inc.',price:310.45,change:1.10,changePercent:0.36},{symbol:'MSFT',name:'Microsoft',price:448.9,change:3.2,changePercent:0.72},{symbol:'NVDA',name:'NVIDIA',price:128.2,change:4.5,changePercent:3.64},{symbol:'AMZN',name:'Amazon',price:186.5,change:-0.8,changePercent:-0.43},{symbol:'GOOGL',name:'Alphabet',price:179.4,change:1.5,changePercent:0.84}] },
+    NYSE: { name:'NYSE', country:'USA', currency:'USD', flag:'🇺🇸', stocks:[{symbol:'JPM',name:'JPMorgan Chase',price:198.5,change:2.1,changePercent:1.07},{symbol:'V',name:'Visa Inc.',price:274.3,change:-1.2,changePercent:-0.44},{symbol:'WMT',name:'Walmart',price:67.8,change:0.9,changePercent:1.35},{symbol:'UNH',name:'UnitedHealth',price:492.1,change:5.6,changePercent:1.15},{symbol:'DIS',name:'Walt Disney',price:98.5,change:1.2,changePercent:1.23}] },
+    LSE: { name:'LSE', country:'UK', currency:'GBP', flag:'🇬🇧', stocks:[{symbol:'AZN.L',name:'AstraZeneca',price:12240,change:180,changePercent:1.49},{symbol:'SHEL.L',name:'Shell PLC',price:2785,change:-22,changePercent:-0.78},{symbol:'HSBA.L',name:'HSBC',price:688.4,change:4.2,changePercent:0.61},{symbol:'ULVR.L',name:'Unilever',price:4350,change:35,changePercent:0.81},{symbol:'BP.L',name:'BP PLC',price:478.2,change:-3.1,changePercent:-0.64}] },
+    XETRA: { name:'XETRA', country:'Germany', currency:'EUR', flag:'🇩🇪', stocks:[{symbol:'SAP.DE',name:'SAP SE',price:182.4,change:2.6,changePercent:1.45},{symbol:'SIE.DE',name:'Siemens',price:174.2,change:1.8,changePercent:1.04},{symbol:'ALV.DE',name:'Allianz',price:265.8,change:-0.9,changePercent:-0.34},{symbol:'AIR.DE',name:'Airbus',price:158.3,change:3.1,changePercent:2.0},{symbol:'DTG.DE',name:'Daimler Truck',price:37.4,change:0.45,changePercent:1.22}] },
+    TSE: { name:'TSE', country:'Canada', currency:'CAD', flag:'🇨🇦', stocks:[{symbol:'RY.TO',name:'Royal Bank',price:146.2,change:1.1,changePercent:0.76},{symbol:'TD.TO',name:'TD Bank',price:75.8,change:-0.4,changePercent:-0.52},{symbol:'SHOP.TO',name:'Shopify',price:92.4,change:3.8,changePercent:4.29},{symbol:'ENB.TO',name:'Enbridge',price:49.6,change:0.3,changePercent:0.61},{symbol:'CNR.TO',name:'CN Rail',price:162.5,change:1.2,changePercent:0.74}] },
+    HKEX: { name:'HKEX', country:'Hong Kong', currency:'HKD', flag:'🇭🇰', stocks:[{symbol:'0700.HK',name:'Tencent',price:382.4,change:6.8,changePercent:1.81},{symbol:'9988.HK',name:'Alibaba',price:78.5,change:-1.2,changePercent:-1.51},{symbol:'1299.HK',name:'AIA Group',price:56.8,change:0.9,changePercent:1.61},{symbol:'3690.HK',name:'Meituan',price:118.2,change:4.1,changePercent:3.59},{symbol:'0941.HK',name:'China Mobile',price:75.1,change:0.4,changePercent:0.54}] },
+    TADAWUL: { name:'Tadawul', country:'Saudi Arabia', currency:'SAR', flag:'🇸🇦', stocks:[{symbol:'2222.SR',name:'Saudi Aramco',price:28.15,change:0.25,changePercent:0.9},{symbol:'1120.SR',name:'Al Rajhi Bank',price:84.5,change:1.2,changePercent:1.44},{symbol:'2010.SR',name:'SABIC',price:76.8,change:-0.6,changePercent:-0.77},{symbol:'1180.SR',name:'SNB',price:38.4,change:0.5,changePercent:1.32},{symbol:'2380.SR',name:'Rabigh Refining',price:8.92,change:0.08,changePercent:0.9}] },
+    NSE: { name:'NSE', country:'India', currency:'INR', flag:'🇮🇳', stocks:[{symbol:'RELIANCE',name:'Reliance Ind.',price:2940.5,change:35.2,changePercent:1.21},{symbol:'TCS',name:'Tata Consultancy',price:3820,change:-18.5,changePercent:-0.48},{symbol:'HDFCBANK',name:'HDFC Bank',price:1540.8,change:12.4,changePercent:0.81},{symbol:'INFY',name:'Infosys',price:1495,change:22.1,changePercent:1.5},{symbol:'ICICI',name:'ICICI Bank',price:1125.4,change:8.6,changePercent:0.77}] },
+    ASX: { name:'ASX', country:'Australia', currency:'AUD', flag:'🇦🇺', stocks:[{symbol:'BHP.AX',name:'BHP Group',price:43.8,change:0.65,changePercent:1.51},{symbol:'CBA.AX',name:'Commonwealth Bank',price:121.5,change:1.8,changePercent:1.5},{symbol:'CSL.AX',name:'CSL Limited',price:292.4,change:-2.1,changePercent:-0.71},{symbol:'NAB.AX',name:'NAB',price:34.6,change:0.35,changePercent:1.02},{symbol:'WDS.AX',name:'Woodside',price:26.9,change:-0.4,changePercent:-1.47}] },
+    SIX: { name:'SIX Swiss', country:'Switzerland', currency:'CHF', flag:'🇨🇭', stocks:[{symbol:'NESN.SW',name:'Nestlé',price:94.8,change:-0.5,changePercent:-0.52},{symbol:'NOVN.SW',name:'Novartis',price:92.4,change:1.1,changePercent:1.2},{symbol:'ROG.SW',name:'Roche',price:232,change:2.8,changePercent:1.22},{symbol:'UBSG.SW',name:'UBS Group',price:27.4,change:0.45,changePercent:1.67},{symbol:'ABBN.SW',name:'ABB Ltd',price:48.9,change:0.7,changePercent:1.45}] },
+    BM: { name:'BME', country:'Spain', currency:'EUR', flag:'🇪🇸', stocks:[{symbol:'SAN.MC',name:'Santander',price:4.58,change:0.06,changePercent:1.33},{symbol:'ITX.MC',name:'Inditex',price:46.2,change:0.8,changePercent:1.76},{symbol:'BBVA.MC',name:'BBVA',price:10.15,change:-0.08,changePercent:-0.78},{symbol:'IBE.MC',name:'Iberdrola',price:12.1,change:0.15,changePercent:1.26},{symbol:'TEF.MC',name:'Telefónica',price:4.12,change:0.02,changePercent:0.49}] },
+    TSE_JP: { name:'TSE Tokyo', country:'Japan', currency:'JPY', flag:'🇯🇵', stocks:[{symbol:'7203.T',name:'Toyota',price:3280,change:45,changePercent:1.39},{symbol:'6758.T',name:'Sony',price:12850,change:210,changePercent:1.66},{symbol:'9984.T',name:'SoftBank',price:9420,change:-150,changePercent:-1.57},{symbol:'8306.T',name:'MUFG',price:1610,change:25,changePercent:1.58},{symbol:'6861.T',name:'Keyence',price:68500,change:800,changePercent:1.18}] }
+};
+
+// Bond helper
+function makeBond(id,cat,issuer,name,coupon,couponN,mat,par,unit,ytm,ratings,tax,country,curr,badge,badgeText,desc) {
+    return {id,category:cat,issuer,name,coupon,couponNum:couponN,maturity:mat,pricePar:par,pricePerUnit:unit,ytm,ratings,taxStatus:tax,country,currency:curr,minIncrement:1000,badgeClass:badge,badgeText,description:desc};
+}
+
+const exchangeBondsData = {
+    NASDAQ: [
+        makeBond('AAPL-2043','aapl','Apple Inc.','Apple 3.850% Sr Notes 2043','3.850%',3.85,'05/04/2043',96.5,965,4.82,{moodys:'Aaa',sp:'AA+',fitch:'AA+'},'US Corporate Taxable','USA','USD','badge-aapl','Apple Senior','Flagship Apple corporate debt'),
+        makeBond('AAPL-GREEN-2030','aapl','Apple Inc.','Apple Green Bond 2.650% 2030','2.650%',2.65,'05/11/2030',93.8,938,4.15,{moodys:'Aaa',sp:'AA+',fitch:'AA+'},'US Green ESG','USA','USD','badge-aapl','Apple Green ESG','Clean energy financing'),
+        makeBond('NYC-MUNI-2035','muni','City of New York','NYC Muni GO 4.250% 2035','4.250%',4.25,'08/01/2035',102.15,1021.5,3.92,{moodys:'Aa2',sp:'AA',fitch:'AA'},'US Tax-Exempt','USA','USD','badge-muni','NYC Municipal','Tax-exempt GO bond'),
+        makeBond('US-SOV-10Y','sovereign','US Treasury','US Treasury 10Y 4.250% 2034','4.250%',4.25,'05/15/2034',98.75,987.5,4.41,{moodys:'Aaa',sp:'AA+',fitch:'AA+'},'US State Tax-Exempt','USA','USD','badge-sovereign','US Sovereign','Risk-free benchmark'),
+        makeBond('MSFT-CORP-2032','corp','Microsoft Corp','Microsoft 2.921% Sr Note 2032','2.921%',2.921,'03/17/2032',94.2,942,3.82,{moodys:'Aaa',sp:'AAA',fitch:'AAA'},'US Corporate Taxable','USA','USD','badge-corp','Corporate (MSFT)','AAA-rated Microsoft debt')
+    ],
+    NYSE: [
+        makeBond('AAPL-2043-NYSE','aapl','Apple Inc.','Apple 3.850% Sr Notes 2043','3.850%',3.85,'05/04/2043',96.5,965,4.82,{moodys:'Aaa',sp:'AA+',fitch:'AA+'},'US Corporate Taxable','USA','USD','badge-aapl','Apple Senior','NYSE-listed Apple note'),
+        makeBond('NY-MUNI-2036','muni','State of New York','NY State GO 3.95% 2036','3.950%',3.95,'06/15/2036',100.8,1008,3.85,{moodys:'Aa1',sp:'AA+',fitch:'AA+'},'US Tax-Exempt','USA','USD','badge-muni','NY State Muni','State tax-exempt bond'),
+        makeBond('US-SOV-30Y','sovereign','US Treasury','US Treasury 30Y 4.625% 2054','4.625%',4.625,'05/15/2054',97.2,972,4.79,{moodys:'Aaa',sp:'AA+',fitch:'AA+'},'US Tax-Exempt','USA','USD','badge-sovereign','US Sovereign 30Y','Long-term benchmark'),
+        makeBond('JPM-CORP-2033','corp','JPMorgan Chase','JPMorgan 4.850% Sr 2033','4.850%',4.85,'07/25/2033',101.5,1015,4.62,{moodys:'Aa2',sp:'A+',fitch:'AA-'},'US Corporate Taxable','USA','USD','badge-corp','Corporate (JPM)','Major bank debt')
+    ],
+    LSE: [
+        makeBond('AAPL-GBP-2031','aapl','Apple Inc.','Apple GBP 1.375% 2031','1.375%',1.375,'10/01/2031',91.2,912,2.85,{moodys:'Aaa',sp:'AA+',fitch:'AA+'},'UK Corporate','UK','GBP','badge-aapl','Apple GBP Note','Sterling-denominated Apple debt'),
+        makeBond('UK-GILT-2034','sovereign','HM Treasury','UK Gilt 4.125% 2034','4.125%',4.125,'01/29/2034',97.8,978,4.42,{moodys:'Aa3',sp:'AA',fitch:'AA-'},'UK Sovereign','UK','GBP','badge-sovereign','UK Gilt','UK government benchmark'),
+        makeBond('LON-MUNI-TFL','muni','Transport for London','TfL Bond 3.875% 2036','3.875%',3.875,'09/15/2036',98.5,985,4.08,{moodys:'Aa3',sp:'AA-',fitch:'AA-'},'UK Municipal','UK','GBP','badge-muni','TfL Municipal','London transport bond'),
+        makeBond('BP-CORP-2032','corp','BP PLC','BP 3.25% Sr Note 2032','3.250%',3.25,'06/28/2032',95.4,954,4.01,{moodys:'A2',sp:'A-',fitch:'A'},'UK Corporate','UK','GBP','badge-corp','Corporate (BP)','Energy major debt')
+    ],
+    XETRA: [
+        makeBond('AAPL-EUR-2029','aapl','Apple Inc.','Apple EUR 0.500% 2029','0.500%',0.5,'11/15/2029',92.1,921,2.45,{moodys:'Aaa',sp:'AA+',fitch:'AA+'},'EU Corporate','Germany','EUR','badge-aapl','Apple EUR Note','Euro-denominated Apple debt'),
+        makeBond('DE-BUND-10Y','sovereign','German Federal Republic','Bund 2.300% 2033','2.300%',2.3,'02/15/2033',98.6,986,2.48,{moodys:'Aaa',sp:'AAA',fitch:'AAA'},'EU Sovereign','Germany','EUR','badge-sovereign','German Bund','AAA benchmark'),
+        makeBond('NRW-MUNI','muni','State of NRW','NRW Landeschatz 1.875% 2034','1.875%',1.875,'03/20/2034',95.8,958,2.42,{moodys:'Aa1',sp:'AA',fitch:'AA'},'EU Municipal','Germany','EUR','badge-muni','NRW Municipal','German state bond'),
+        makeBond('SAP-CORP-2031','corp','SAP SE','SAP 1.250% Sr 2031','1.250%',1.25,'04/14/2031',93.5,935,2.48,{moodys:'A2',sp:'A',fitch:'A'},'EU Corporate','Germany','EUR','badge-corp','Corporate (SAP)','Tech corporate note')
+    ],
+    TSE: [
+        makeBond('AAPL-CAD-2030','aapl','Apple Inc.','Apple CAD 2.100% 2030','2.100%',2.1,'09/01/2030',94.5,945,3.28,{moodys:'Aaa',sp:'AA+',fitch:'AA+'},'CA Corporate','Canada','CAD','badge-aapl','Apple CAD Note','Canadian dollar Apple debt'),
+        makeBond('CA-GOV-10Y','sovereign','Govt of Canada','Canada Bond 3.25% 2034','3.250%',3.25,'06/01/2034',99.1,991,3.37,{moodys:'Aaa',sp:'AAA',fitch:'AA+'},'CA Sovereign','Canada','CAD','badge-sovereign','Canada Sovereign','Triple-A sovereign'),
+        makeBond('ON-MUNI-2033','muni','Province of Ontario','Ontario Bond 3.50% 2033','3.500%',3.5,'06/02/2033',98.2,982,3.74,{moodys:'Aa3',sp:'A+',fitch:'AA-'},'CA Provincial','Canada','CAD','badge-muni','Ontario Provincial','Provincial bond'),
+        makeBond('RY-CORP-2032','corp','Royal Bank of Canada','RBC 3.875% Sr 2032','3.875%',3.875,'05/01/2032',99.8,998,3.91,{moodys:'Aa2',sp:'AA-',fitch:'AA'},'CA Corporate','Canada','CAD','badge-corp','Corporate (RBC)','Major bank debt')
+    ],
+    HKEX: [
+        makeBond('AAPL-HKD-2031','aapl','Apple Inc.','Apple HKD 1.650% 2031','1.650%',1.65,'03/15/2031',93.2,932,2.98,{moodys:'Aaa',sp:'AA+',fitch:'AA+'},'HK Corporate','Hong Kong','HKD','badge-aapl','Apple HKD Note','HK dollar Apple bond'),
+        makeBond('HK-GBOND-2034','sovereign','HKSAR Government','HK Govt Bond 3.00% 2034','3.000%',3.0,'07/28/2034',99.4,994,3.07,{moodys:'Aa3',sp:'AA+',fitch:'AA+'},'HK Sovereign','Hong Kong','HKD','badge-sovereign','HK Sovereign','HKSAR benchmark'),
+        makeBond('HK-MTR-MUNI','muni','MTR Corporation','MTR Bond 2.85% 2035','2.850%',2.85,'11/20/2035',96.8,968,3.24,{moodys:'Aa2',sp:'AA',fitch:'AA'},'HK Municipal','Hong Kong','HKD','badge-muni','MTR Municipal','Transport infrastructure'),
+        makeBond('TENCENT-CORP','corp','Tencent Holdings','Tencent 3.24% Sr 2033','3.240%',3.24,'06/03/2033',97.5,975,3.58,{moodys:'A1',sp:'A+',fitch:'A+'},'HK Corporate','Hong Kong','HKD','badge-corp','Corporate (Tencent)','Tech giant debt')
+    ],
+    TADAWUL: [
+        makeBond('AAPL-SAR-2032','aapl','Apple Inc.','Apple SAR 3.500% 2032','3.500%',3.5,'08/20/2032',97.5,975,3.88,{moodys:'Aaa',sp:'AA+',fitch:'AA+'},'SA Corporate','Saudi Arabia','SAR','badge-aapl','Apple SAR Note','Riyal Apple bond'),
+        makeBond('SA-SUKUK-2034','sovereign','Kingdom of Saudi Arabia','Saudi Sukuk 4.00% 2034','4.000%',4.0,'04/17/2034',100.2,1002,3.96,{moodys:'A1',sp:'A',fitch:'A'},'Islamic Sovereign','Saudi Arabia','SAR','badge-sovereign','Saudi Sukuk','Sharia-compliant sovereign'),
+        makeBond('RIYADH-MUNI','muni','Riyadh Development Authority','Riyadh Green Sukuk 3.75% 2035','3.750%',3.75,'09/15/2035',99.4,994,3.82,{moodys:'A1',sp:'A',fitch:'A'},'SA Municipal','Saudi Arabia','SAR','badge-muni','Riyadh Municipal','Vision 2030 bond'),
+        makeBond('ARAMCO-CORP','corp','Saudi Aramco','Aramco 3.50% Sr 2033','3.500%',3.5,'04/16/2033',98.8,988,3.65,{moodys:'A1',sp:'A',fitch:'A'},'SA Corporate','Saudi Arabia','SAR','badge-corp','Corporate (Aramco)','Energy sovereign corporate')
+    ],
+    NSE: [
+        makeBond('AAPL-INR-2031','aapl','Apple Inc.','Apple INR 6.850% 2031','6.850%',6.85,'06/15/2031',101.2,1012,6.60,{moodys:'Aaa',sp:'AA+',fitch:'AA+'},'IN Corporate','India','INR','badge-aapl','Apple INR Note','Rupee-denominated Apple'),
+        makeBond('IN-GOV-10Y','sovereign','Govt of India','India G-Sec 7.18% 2033','7.180%',7.18,'08/14/2033',100.8,1008,7.08,{moodys:'Baa3',sp:'BBB-',fitch:'BBB-'},'IN Sovereign','India','INR','badge-sovereign','India G-Sec','Government security'),
+        makeBond('MH-SDL-MUNI','muni','State of Maharashtra','Maharashtra SDL 7.25% 2034','7.250%',7.25,'03/28/2034',99.8,998,7.28,{moodys:'Baa3',sp:'BBB-',fitch:'BBB-'},'IN State Dev Loan','India','INR','badge-muni','Maharashtra SDL','State development loan'),
+        makeBond('RELIANCE-CORP','corp','Reliance Industries','Reliance 7.50% NCD 2032','7.500%',7.5,'12/10/2032',102.1,1021,7.12,{moodys:'Baa2',sp:'BBB+',fitch:'BBB+'},'IN Corporate','India','INR','badge-corp','Corporate (RIL)','Major conglomerate debt')
+    ],
+    ASX: [
+        makeBond('AAPL-AUD-2030','aapl','Apple Inc.','Apple AUD 3.200% 2030','3.200%',3.2,'11/20/2030',96.5,965,3.92,{moodys:'Aaa',sp:'AA+',fitch:'AA+'},'AU Corporate','Australia','AUD','badge-aapl','Apple AUD Note','AUD Apple bond'),
+        makeBond('AU-GOV-10Y','sovereign','Commonwealth of Australia','ACGB 3.750% 2034','3.750%',3.75,'04/21/2034',99.2,992,3.84,{moodys:'Aaa',sp:'AAA',fitch:'AAA'},'AU Sovereign','Australia','AUD','badge-sovereign','ACGB Sovereign','AAA government benchmark'),
+        makeBond('NSW-TCorp','muni','NSW Treasury Corp','NSW T-Corp 3.50% 2035','3.500%',3.5,'05/20/2035',97.4,974,3.82,{moodys:'Aaa',sp:'AA+',fitch:'AA+'},'AU Semi-Govt','Australia','AUD','badge-muni','NSW Municipal','State semi-government'),
+        makeBond('BHP-CORP-2033','corp','BHP Group','BHP 3.85% Sr 2033','3.850%',3.85,'08/15/2033',98.5,985,4.05,{moodys:'A3',sp:'A',fitch:'A+'},'AU Corporate','Australia','AUD','badge-corp','Corporate (BHP)','Mining major debt')
+    ],
+    SIX: [
+        makeBond('AAPL-CHF-2029','aapl','Apple Inc.','Apple CHF 0.375% 2029','0.375%',0.375,'11/10/2029',94.5,945,1.68,{moodys:'Aaa',sp:'AA+',fitch:'AA+'},'CH Corporate','Switzerland','CHF','badge-aapl','Apple CHF Note','Franc Apple bond'),
+        makeBond('CH-CONF-2034','sovereign','Swiss Confederation','Swiss Confederation 1.25% 2034','1.250%',1.25,'06/22/2034',99.8,998,1.28,{moodys:'Aaa',sp:'AAA',fitch:'AAA'},'CH Sovereign','Switzerland','CHF','badge-sovereign','Swiss Sovereign','Safe-haven AAA'),
+        makeBond('ZH-KANTON','muni','Canton of Zurich','Zurich Canton 0.75% 2033','0.750%',0.75,'10/15/2033',96.2,962,1.21,{moodys:'Aaa',sp:'AAA',fitch:'AAA'},'CH Cantonal','Switzerland','CHF','badge-muni','Zurich Cantonal','Canton bond'),
+        makeBond('NESN-CORP-2032','corp','Nestlé SA','Nestlé 1.00% Sr 2032','1.000%',1.0,'03/28/2032',94.8,948,1.72,{moodys:'Aa3',sp:'AA-',fitch:'AA'},'CH Corporate','Switzerland','CHF','badge-corp','Corporate (Nestlé)','Consumer staples note')
+    ],
+    BM: [
+        makeBond('AAPL-EUR-BM','aapl','Apple Inc.','Apple EUR 0.875% 2029','0.875%',0.875,'05/24/2029',93.5,935,2.62,{moodys:'Aaa',sp:'AA+',fitch:'AA+'},'EU Corporate','Spain','EUR','badge-aapl','Apple EUR Note','Euro Apple bond'),
+        makeBond('ES-BONO-2034','sovereign','Kingdom of Spain','Spanish Bono 3.45% 2034','3.450%',3.45,'07/30/2034',99.2,992,3.54,{moodys:'Baa1',sp:'A',fitch:'A-'},'EU Sovereign','Spain','EUR','badge-sovereign','Spain Sovereign','Spanish benchmark'),
+        makeBond('MADRID-MUNI','muni','Comunidad de Madrid','Madrid Autonomous 2.80% 2033','2.800%',2.8,'11/15/2033',97.8,978,3.12,{moodys:'Baa1',sp:'A',fitch:'A-'},'EU Municipal','Spain','EUR','badge-muni','Madrid Municipal','Regional autonomous'),
+        makeBond('SAN-CORP-2032','corp','Banco Santander','Santander 3.90% Sr 2032','3.900%',3.9,'01/18/2032',99.8,998,3.94,{moodys:'A2',sp:'A',fitch:'A-'},'EU Corporate','Spain','EUR','badge-corp','Corporate (Santander)','Banking major debt')
+    ],
+    TSE_JP: [
+        makeBond('AAPL-JPY-2031','aapl','Apple Inc.','Apple JPY 0.750% 2031','0.750%',0.75,'02/20/2031',97.5,975,1.12,{moodys:'Aaa',sp:'AA+',fitch:'AA+'},'JP Corporate','Japan','JPY','badge-aapl','Apple JPY Note','Yen Apple samurai bond'),
+        makeBond('JP-JGB-10Y','sovereign','Govt of Japan','JGB 10Y 0.950% 2034','0.950%',0.95,'03/20/2034',99.6,996,0.99,{moodys:'A1',sp:'A+',fitch:'A+'},'JP Sovereign','Japan','JPY','badge-sovereign','Japan JGB','Benchmark JGB'),
+        makeBond('TOKYO-METRO','muni','Tokyo Metropolitan Govt','Tokyo Metro Bond 0.85% 2033','0.850%',0.85,'09/20/2033',98.2,982,1.08,{moodys:'A1',sp:'A+',fitch:'A+'},'JP Municipal','Japan','JPY','badge-muni','Tokyo Municipal','Tokyo metro bond'),
+        makeBond('TOYOTA-CORP','corp','Toyota Motor','Toyota 1.050% Sr 2033','1.050%',1.05,'09/20/2033',99.2,992,1.14,{moodys:'A1',sp:'A+',fitch:'A+'},'JP Corporate','Japan','JPY','badge-corp','Corporate (Toyota)','Automotive giant debt')
+    ]
+};
+
+function getActiveExchangeBonds() { return exchangeBondsData[currentExchange] || exchangeBondsData.NASDAQ; }
+function getRatingClass(r) { if(['Aaa','AAA'].includes(r)) return 'rating-prime'; if(['Aa1','Aa2','Aa3','AA+','AA','AA-'].includes(r)) return 'rating-high'; return 'rating-upper-medium'; }
+
+// ==================================================
+// GOVERNANCE & COMPLIANCE
+// ==================================================
+function toggleModal(show) {
+    const m = document.getElementById('guidelines-modal');
+    if (show) m.classList.add('open'); else m.classList.remove('open');
+}
+
+function toggleGainersModal(show) {
+    const m = document.getElementById('gainers-modal');
+    if (show) {
+        m.classList.add('open');
+        renderGainersModal();
+    } else {
+        m.classList.remove('open');
+    }
+}
+
+function renderGainersModal() {
+    const filterSelect = document.getElementById('gainers-exchange-filter');
+    const selectedFilter = filterSelect ? filterSelect.value : 'CURRENT';
+    const searchQuery = (document.getElementById('gainers-search-input')?.value || '').toLowerCase().trim();
+
+    const tbody = document.getElementById('gainers-modal-tbody');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+
+    let stockList = [];
+
+    if (selectedFilter === 'ALL') {
+        Object.keys(exchangeData).forEach(exKey => {
+            const exInfo = exchangeData[exKey];
+            exInfo.stocks.forEach(st => {
+                stockList.push({ ...st, exchangeKey: exKey, exchangeInfo: exInfo });
+            });
+        });
+    } else if (selectedFilter === 'CURRENT') {
+        const exInfo = exchangeData[currentExchange] || exchangeData['NASDAQ'];
+        exInfo.stocks.forEach(st => {
+            stockList.push({ ...st, exchangeKey: currentExchange, exchangeInfo: exInfo });
+        });
+    } else {
+        const exInfo = exchangeData[selectedFilter];
+        if (exInfo) {
+            exInfo.stocks.forEach(st => {
+                stockList.push({ ...st, exchangeKey: selectedFilter, exchangeInfo: exInfo });
+            });
+        }
+    }
+
+    if (searchQuery) {
+        stockList = stockList.filter(s => s.symbol.toLowerCase().includes(searchQuery) || s.name.toLowerCase().includes(searchQuery));
+    }
+
+    stockList.sort((a, b) => b.changePercent - a.changePercent);
+
+    if (stockList.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="6" style="padding:20px; text-align:center; color:#94a3b8;">No matching stocks found.</td></tr>`;
+        return;
+    }
+
+    stockList.forEach(item => {
+        const isUp = item.changePercent >= 0;
+        const rate = fxRates[item.exchangeInfo.currency] || 1;
+        const sym = currencySymbols[item.exchangeInfo.currency] || '$';
+        const usdValue = item.price / rate;
+
+        const tr = document.createElement('tr');
+        tr.style.cursor = 'pointer';
+        tr.onclick = () => {
+            if (currentExchange !== item.exchangeKey) {
+                changeExchange(item.exchangeKey);
+            }
+            updateCurrentStock(item);
+            toggleGainersModal(false);
+        };
+
+        tr.innerHTML = `
+            <td style="padding:8px 6px;">
+                <span style="font-size:14px; margin-right:4px;">${item.exchangeInfo.flag}</span>
+                <span style="font-weight:700; font-size:11px; color:#475569;">${item.exchangeInfo.name}</span>
+            </td>
+            <td style="padding:8px 6px;">
+                <div style="font-weight:700; color:#0f172a;">${item.symbol}</div>
+                <div style="font-size:10px; color:#64748b;">${item.name}</div>
+            </td>
+            <td style="padding:8px 6px; font-weight:700; color:#0f172a;">
+                ${sym}${item.price.toFixed(2)} ${item.exchangeInfo.currency}
+            </td>
+            <td style="padding:8px 6px; font-size:11px; color:#64748b;">
+                ≈ $${usdValue.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})} USD
+            </td>
+            <td style="padding:8px 6px; font-weight:700; color:${isUp ? '#00c805' : '#ef4444'};">
+                ${isUp ? '+' : ''}${item.change.toFixed(2)} (${isUp ? '+' : ''}${item.changePercent.toFixed(2)}%)
+            </td>
+            <td style="padding:8px 6px; text-align:right;">
+                <button type="button" style="background:#00c805; color:#fff; border:none; border-radius:14px; padding:5px 10px; font-size:10px; font-weight:700; cursor:pointer;" onclick="event.stopPropagation(); if(currentExchange!=='${item.exchangeKey}'){changeExchange('${item.exchangeKey}');} updateCurrentStock(exchangeData['${item.exchangeKey}'].stocks.find(s=>s.symbol==='${item.symbol}')); toggleGainersModal(false);">
+                    ⚡ Select Stock
+                </button>
+            </td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+function toggleGovernanceModal(show) {
+    const m = document.getElementById('governance-modal');
+    if (show) { m.classList.add('open'); populateGovUserSelect(); updateGovModalUI(); } else { m.classList.remove('open'); }
+}
+
+function populateGovUserSelect() {
+    const c = document.getElementById('test-profiles-list');
+    if (!c) return;
+    c.innerHTML = '';
+    testProfiles.forEach(p => {
+        const chip = document.createElement('button');
+        chip.type = 'button';
+        chip.className = `test-profile-chip ${p.id === currentUserId ? 'active-chip' : ''}`;
+        chip.textContent = `${p.id} (${p.name})`;
+        chip.onclick = () => selectTestProfile(p.id, p.name);
+        c.appendChild(chip);
+    });
+}
+
+function selectTestProfile(id, name) {
+    currentUserId = id;
+    if (!sgaUsers[id]) sgaUsers[id] = { id, name, type:'Test', restrictions:{} };
+    document.getElementById('gov-target-user-id').value = id;
+    document.getElementById('gov-target-user-name').value = name;
+    populateGovUserSelect(); updateGovModalUI(); checkUserExchangeCompliance();
+}
+
+function handleUserInputChanges() {
+    const id = document.getElementById('gov-target-user-id').value.trim() || 'SGA-USR-CUSTOM';
+    const name = document.getElementById('gov-target-user-name').value.trim() || 'Custom';
+    currentUserId = id;
+    if (!sgaUsers[id]) sgaUsers[id] = { id, name, type:'Custom', restrictions:{} };
+    else sgaUsers[id].name = name;
+    populateGovUserSelect(); updateGovModalUI(); checkUserExchangeCompliance();
+}
+
+function toggleDurationField(type) {
+    const d = document.getElementById('gov-duration-group');
+    const b = document.getElementById('gov-apply-btn');
+    if (type === 'temp') { d.style.display = 'block'; b.className = 'gov-action-btn'; b.textContent = 'Apply Temporary Suspension'; }
+    else if (type === 'permanent') { d.style.display = 'none'; b.className = 'gov-action-btn'; b.textContent = 'Apply Permanent Ban'; }
+    else { d.style.display = 'none'; b.className = 'gov-action-btn lift-btn'; b.textContent = 'Lift Ban & Reinstate'; }
+}
+
+function applyGovernanceAction() {
+    try {
+        const userId = (document.getElementById('gov-target-user-id').value.trim()) || currentUserId;
+        const userName = (document.getElementById('gov-target-user-name').value.trim()) || 'Custom';
+        currentUserId = userId;
+        if (!sgaUsers[userId]) sgaUsers[userId] = { id:userId, name:userName, type:'Custom', restrictions:{} };
+        else sgaUsers[userId].name = userName;
+        if (!sgaUsers[userId].restrictions) sgaUsers[userId].restrictions = {};
+
+        const user = sgaUsers[userId];
+        const exchange = document.getElementById('gov-target-exchange-select').value;
+        const actionType = document.getElementById('gov-enforcement-type').value;
+        const hours = parseInt(document.getElementById('gov-suspension-duration').value) || 24;
+        const reason = document.getElementById('gov-violation-reason').value;
+
+        const targets = exchange === 'ALL' ? ['NASDAQ','NYSE','LSE','XETRA','TSE','HKEX','TADAWUL','NSE','ASX','SIX','BM','TSE_JP'] : [exchange];
+
+        targets.forEach(ex => {
+            if (actionType === 'lift') delete user.restrictions[ex];
+            else if (actionType === 'permanent') user.restrictions[ex] = { type:'permanent', reason, expiresAt:null };
+            else user.restrictions[ex] = { type:'temp', reason, expiresAt: new Date(Date.now() + hours*3600*1000).toISOString() };
+        });
+
+        recentTrades.unshift({ time: new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'}), routing:`${exchange==='ALL'?'GLOBAL':exchange} Compliance`, side: actionType==='lift'?'REINSTATED':'ENFORCEMENT', shares:userId, priceUSD:0, currency:'USD', totalNative:0 });
+        updateTradesTable();
+
+        const label = actionType==='lift' ? 'Reinstated' : actionType==='permanent' ? 'Permanently Banned' : `Suspended ${hours}h`;
+
+        const toast = document.getElementById('gov-toast-feedback');
+        if (toast) {
+            toast.style.display = 'block';
+            toast.style.background = actionType==='lift' ? '#dcfce7' : '#fee2e2';
+            toast.style.color = actionType==='lift' ? '#15803d' : '#991b1b';
+            toast.style.border = '1px solid ' + (actionType==='lift' ? '#86efac' : '#fca5a5');
+            toast.innerHTML = actionType==='lift' ? `✓ REINSTATED: ${userId} on ${exchange}` : `⛔ ENFORCED: ${userId} ${label} on ${exchange}`;
+            setTimeout(() => { toast.style.display = 'none'; }, 4000);
+        }
+
+        populateGovUserSelect(); updateGovModalUI(); checkUserExchangeCompliance();
+        alert(`🛡️ GOVERNANCE ACTION!\n\nUser: ${userId} (${userName})\nExchange: ${exchange}\nStatus: ${label}\nReason: ${reason}\n\n⚡ Broadcast to SGA Ledger.`);
+    } catch(e) { console.error(e); alert('Error: ' + e.message); }
+}
+
+function updateGovModalUI() {
+    const user = sgaUsers[currentUserId];
+    if (!user) return;
+    document.getElementById('modal-active-user-label').textContent = `${currentUserId} - ${user.name}`;
+    const tbody = document.getElementById('gov-matrix-tbody');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+    ['NASDAQ','NYSE','LSE','XETRA','TSE','HKEX','TADAWUL','NSE','ASX','SIX','BM','TSE_JP'].forEach(ex => {
+        const tr = document.createElement('tr');
+        const r = user.restrictions[ex];
+        let st = '<span class="status-pill-ok">Compliant</span>', dt = 'Full Access';
+        if (r) {
+            if (r.type === 'permanent') { st = '<span class="status-pill-banned">🔴 Banned</span>'; dt = r.reason; }
+            else { const exp = new Date(r.expiresAt); if (exp < new Date()) { delete user.restrictions[ex]; } else { st = '<span class="status-pill-temp">⏳ Suspended</span>'; dt = r.reason; } }
+        }
+        tr.innerHTML = `<td style="font-weight:600;">${ex}</td><td>${st}</td><td style="font-size:9px;color:#94a3b8;">${dt}</td>`;
+        tbody.appendChild(tr);
+    });
+}
+
+function checkUserExchangeCompliance() {
+    const user = sgaUsers[currentUserId] || sgaUsers['SGA-USR-9042'];
+    const r = user.restrictions[currentExchange];
+    const banner = document.getElementById('user-compliance-banner');
+    const btn = document.getElementById('action-btn');
+    const dot = document.getElementById('header-status-dot');
+    const idText = document.getElementById('header-user-id-text');
+    if (idText) idText.textContent = user.id;
+
+    if (r) {
+        if (r.type === 'temp' && new Date(r.expiresAt) < new Date()) { delete user.restrictions[currentExchange]; return checkUserExchangeCompliance(); }
+        banner.style.display = 'block';
+        document.getElementById('restriction-reason-msg').innerHTML = `SGA ID <strong>${user.id}</strong> restricted on <strong>${currentExchange}</strong>: <strong>${r.reason}</strong>`;
+        const badge = document.getElementById('restriction-type-badge');
+        const timer = document.getElementById('restriction-timer-msg');
+        if (r.type === 'permanent') { badge.className='restriction-badge'; badge.textContent='Permanent'; timer.textContent='⛔ Permanent ban enforced.'; if(dot) dot.className='user-status-dot dot-banned'; }
+        else { badge.className='restriction-badge temp'; badge.textContent='Temp'; const exp=new Date(r.expiresAt); timer.textContent=`⏳ Expires: ${exp.toLocaleString()}`; if(dot) dot.className='user-status-dot dot-suspended'; }
+        if (btn) { btn.disabled=true; btn.style.background='#94a3b8'; btn.style.cursor='not-allowed'; btn.style.boxShadow='none'; btn.textContent=`⛔ Restricted on ${currentExchange}`; }
+    } else {
+        banner.style.display = 'none';
+        if (dot) dot.className = 'user-status-dot';
+        if (btn) { btn.disabled=false; btn.style.cursor='pointer'; if(activeTab==='buy'){btn.className='review-btn';btn.style.background='#00c805';btn.style.boxShadow='0 2px 4px rgba(0,200,5,0.2)';btn.textContent=activeAssetMode==='bonds'?'Buy Bonds':'Buy Order';}else{btn.className='review-btn btn-sell';btn.style.background='#ef4444';btn.style.boxShadow='0 2px 4px rgba(239,68,68,0.2)';btn.textContent=activeAssetMode==='bonds'?'Sell Bonds':'Sell Order';} }
+    }
+}
+
+// ==================================================
+// TRADING FUNCTIONS
+// ==================================================
+function executeTrade() {
+    const user = sgaUsers[currentUserId] || sgaUsers['SGA-USR-9042'];
+    if (user.restrictions[currentExchange]) { alert(`⛔ TRADE REJECTED!\n\n${user.id} restricted on ${currentExchange}.\nReason: ${user.restrictions[currentExchange].reason}`); return; }
+
+    const input = document.getElementById('trade-amount');
+    const amount = parseFloat(input.value.replace(/,/g,'')) || 0;
+    const rate = fxRates[activeCurrency] || 1;
+    const sym = currencySymbols[activeCurrency] || '$';
+    if (amount <= 0) { alert('Enter a valid amount.'); return; }
+
+    let usdVal=0, natVal=0, qty=0;
+    if (activeAssetMode === 'bonds') {
+        const bond = getActiveExchangeBonds().find(b=>b.id===selectedBondId) || getActiveExchangeBonds()[0];
+        usdVal = amount * (bond.pricePar/100); natVal = usdVal * rate; qty = amount/1000;
+    } else {
+        if (orderMethod==='currency') { natVal=amount; usdVal=amount/rate; qty=usdVal/currentPrice; }
+        else { qty=amount; usdVal=qty*currentPrice; natVal=usdVal*rate; }
+    }
+
+    const fxFee = activeCurrency==='USD' ? 0 : natVal*0.001;
+    const clearFee = 0.5 * rate;
+
+    if (activeTab === 'buy') {
+        const debit = natVal + fxFee + clearFee;
+        sgaReserves[activeCurrency] -= debit;
+        if (activeAssetMode==='bonds') userBondsPar += amount; else userShares += qty;
+        recentTrades.unshift({ time:new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'}), routing:`${activeCurrency} Tranche`, side:activeAssetMode==='bonds'?'BUY BOND':'BUY', shares:qty.toFixed(activeAssetMode==='bonds'?1:4), priceUSD:currentPrice, currency:activeCurrency, totalNative:debit });
+        alert(`✅ ${activeAssetMode==='bonds'?'BOND':'STOCK'} BUY EXECUTED!\nQty: ${qty.toFixed(4)}\nTotal: ${sym}${debit.toLocaleString('en-US',{minimumFractionDigits:2})} ${activeCurrency}\n⚡ SGA T+0 cleared.`);
+    } else {
+        if (activeAssetMode==='bonds' && amount > userBondsPar) { alert('Insufficient bond holdings.'); return; }
+        if (activeAssetMode!=='bonds' && qty > userShares) { alert('Insufficient share holdings.'); return; }
+        const credit = Math.max(0, natVal - fxFee - clearFee);
+        sgaReserves[activeCurrency] += credit;
+        if (activeAssetMode==='bonds') userBondsPar -= amount; else userShares -= qty;
+        recentTrades.unshift({ time:new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'}), routing:`${activeCurrency} Tranche`, side:activeAssetMode==='bonds'?'SELL BOND':'SELL', shares:qty.toFixed(activeAssetMode==='bonds'?1:4), priceUSD:currentPrice, currency:activeCurrency, totalNative:credit });
+        alert(`✅ ${activeAssetMode==='bonds'?'BOND':'STOCK'} SELL EXECUTED!\nQty: ${qty.toFixed(4)}\nCredit: ${sym}${credit.toLocaleString('en-US',{minimumFractionDigits:2})} ${activeCurrency}\n⚡ SGA T+0 cleared.`);
+    }
+    input.value = orderMethod==='currency' ? '1,000.00' : '10';
+    document.getElementById('user-shares-holding').textContent = `${userShares.toFixed(4)} Shares`;
+    document.getElementById('user-bonds-holding').textContent = `$${userBondsPar.toLocaleString('en-US',{minimumFractionDigits:2})} Par`;
+    updateCalculations(); updateLedgerDisplay(); updateTradesTable();
+}
+
+function switchTab(tab) {
+    activeTab = tab;
+    const b = document.getElementById('tab-buy'), s = document.getElementById('tab-sell'), a = document.getElementById('action-btn');
+    if (tab==='buy') { b.className='trade-tab active-buy'; s.className='trade-tab'; if(a){a.className='review-btn';a.style.background='#00c805';a.textContent=activeAssetMode==='bonds'?'Buy Bonds':'Buy Order';} }
+    else { b.className='trade-tab'; s.className='trade-tab active-sell'; if(a){a.className='review-btn btn-sell';a.style.background='#ef4444';a.textContent=activeAssetMode==='bonds'?'Sell Bonds':'Sell Order';} }
+    checkUserExchangeCompliance(); updateCalculations();
+}
+
+function toggleOrderMethod() {
+    const input = document.getElementById('trade-amount');
+    if (orderMethod==='currency') {
+        orderMethod='shares';
+        document.getElementById('toggle-method-btn').textContent = 'Switch to ' + activeCurrency;
+        document.getElementById('input-label').textContent = activeTab==='buy' ? 'Shares to Buy' : 'Shares to Sell';
+        document.getElementById('input-prefix').style.display = 'none';
+        document.getElementById('input-suffix').textContent = 'Shares';
+        if (input) { input.value = '10'; input.style.paddingLeft = '12px'; input.style.paddingRight = '56px'; }
+    } else {
+        orderMethod='currency';
+        document.getElementById('toggle-method-btn').textContent = 'Switch to Shares';
+        document.getElementById('input-label').textContent = activeTab==='buy' ? 'Investment Amount' : 'Target Revenue';
+        document.getElementById('input-prefix').style.display = 'inline';
+        document.getElementById('input-suffix').textContent = activeCurrency;
+        if (input) { input.value = '1,000.00'; input.style.paddingLeft = '28px'; input.style.paddingRight = '48px'; }
+    }
+    updateCalculations();
+}
+
+function setCurrency(curr) {
+    activeCurrency = curr;
+    const sel = document.getElementById('payment-currency');
+    if (sel && sel.value !== curr) sel.value = curr;
+    updateCurrencyUI(); updateCalculations(); updateLedgerDisplay();
+}
+
+function updateCurrencyUI() {
+    const sym = currencySymbols[activeCurrency] || '$';
+    const pfx = document.getElementById('input-prefix');
+    if (pfx) pfx.textContent = sym;
+    if (orderMethod==='currency') { const sfx = document.getElementById('input-suffix'); if (sfx) sfx.textContent = activeCurrency; }
+    const rate = fxRates[activeCurrency] || 1;
+    const conv = currentPrice * rate;
+    const pc = document.getElementById('stock-price-converted');
+    if (pc) pc.textContent = `≈ ${sym}${conv.toLocaleString('en-US',{minimumFractionDigits:2})} ${activeCurrency}`;
+    const fr = document.getElementById('fx-rate');
+    if (fr) fr.textContent = `${rate.toFixed(4)} ${activeCurrency}/USD`;
+}
+
+function handleInput(el) { el.value = el.value.replace(/[^0-9.]/g,''); updateCalculations(); }
+function formatInput(el) { let v = parseFloat(el.value.replace(/,/g,''))||0; el.value = orderMethod==='currency' ? v.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) : Math.floor(v).toString(); updateCalculations(); }
+
+function updateCalculations() {
+    const input = document.getElementById('trade-amount');
+    const amount = parseFloat(input ? input.value.replace(/,/g,'') : '0') || 0;
+    const rate = fxRates[activeCurrency] || 1;
+    const sym = currencySymbols[activeCurrency] || '$';
+    let usdVal=0, natVal=0, qty=0;
+    if (activeAssetMode==='bonds') {
+        const bond = getActiveExchangeBonds().find(b=>b.id===selectedBondId) || getActiveExchangeBonds()[0];
+        usdVal = amount*(bond.pricePar/100); natVal = usdVal*rate; qty = amount/1000;
+    } else {
+        if (orderMethod==='currency') { natVal=amount; usdVal=amount/rate; qty=usdVal/currentPrice; }
+        else { qty=amount; usdVal=qty*currentPrice; natVal=usdVal*rate; }
+    }
+    const fxFee = activeCurrency==='USD' ? 0 : natVal*0.001;
+    const clearFee = 0.5*rate;
+    const total = activeTab==='buy' ? natVal+fxFee+clearFee : Math.max(0,natVal-fxFee-clearFee);
+
+    const el = (id,t) => { const e=document.getElementById(id); if(e) e.textContent=t; };
+    el('fee-shares-qty', qty.toLocaleString('en-US',{maximumFractionDigits:4}));
+    el('fee-converted-valuation', `$${usdVal.toLocaleString('en-US',{minimumFractionDigits:2})} USD`);
+    el('fee-conversion-charge', `${sym}${fxFee.toLocaleString('en-US',{minimumFractionDigits:2})} ${activeCurrency}`);
+    el('fee-settlement-charge', `${sym}${clearFee.toLocaleString('en-US',{minimumFractionDigits:2})} ${activeCurrency}`);
+    el('fee-total-cost', `${sym}${total.toLocaleString('en-US',{minimumFractionDigits:2})} ${activeCurrency}`);
+    el('buying-power-reserves', `${sym}${(sgaReserves[activeCurrency]||0).toLocaleString('en-US',{minimumFractionDigits:2})} ${activeCurrency}`);
+    el('user-shares-holding', `${userShares.toFixed(4)} Shares`);
+}
+
+function updateLedgerDisplay() {
+    const c = document.getElementById('ledger-rows-container');
+    if (!c) return;
+    c.innerHTML = '';
+    ['USD','EUR','GBP','JPY','SAR','HKD','INR'].forEach(curr => {
+        const bal = sgaReserves[curr]; const sym = currencySymbols[curr]||'$'; const active = curr===activeCurrency;
+        const d = document.createElement('div');
+        d.className = `ledger-row ${active?'active':''}`;
+        d.innerHTML = `<span>${curr} ${active?'• Active':''}</span><span>${sym}${bal.toLocaleString('en-US',{minimumFractionDigits:2})}</span>`;
+        c.appendChild(d);
+    });
+}
+
+function updateTradesTable() {
+    const t = document.getElementById('recent-trades-body');
+    if (!t) return;
+    t.innerHTML = '';
+    recentTrades.slice(0,6).forEach(tr => {
+        const sym = currencySymbols[tr.currency]||'$';
+        const row = document.createElement('tr');
+        row.innerHTML = `<td>${tr.time}</td><td style="font-weight:500;">${tr.routing}</td><td><span class="${tr.side.includes('BUY')?'trade-side-buy':'trade-side-sell'}">${tr.side}</span></td><td>$${tr.priceUSD.toFixed(2)}</td><td style="font-weight:600;">${tr.shares}</td><td style="font-weight:600;">${sym}${tr.totalNative.toLocaleString('en-US',{minimumFractionDigits:2})} ${tr.currency}</td>`;
+        t.appendChild(row);
+    });
+}
+
+// ==================================================
+// CHART
+// ==================================================
+function initPriceHistory() {
+    priceHistory = []; timeLabels = [];
+    let base = 305; const now = new Date();
+    for (let i=20; i>=0; i--) { base += (Math.random()-0.48)*0.45; priceHistory.push(base); timeLabels.push(new Date(now.getTime()-i*60000).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})); }
+    currentPrice = priceHistory[priceHistory.length-1];
+}
+
+function drawChart() {
+    const c = document.getElementById('chart-svg-container');
+    if (!c || !priceHistory.length) return;
+    const w = c.clientWidth||800, h = c.clientHeight||280;
+    const pad = {top:20,right:10,bottom:20,left:10};
+    const pw = w-pad.left-pad.right, ph = h-pad.top-pad.bottom;
+    const mn = Math.min(...priceHistory)*0.999, mx = Math.max(...priceHistory)*1.001, rng = (mx-mn)||1;
+    const pts = priceHistory.map((v,i) => ({x:pad.left+(i/(priceHistory.length-1))*pw, y:pad.top+ph-((v-mn)/rng)*ph, price:v, i}));
+    const poly = pts.map(p=>`${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+    const area = `${pts[0].x.toFixed(1)},${(pad.top+ph).toFixed(1)} ${poly} ${pts[pts.length-1].x.toFixed(1)},${(pad.top+ph).toFixed(1)}`;
+    const up = priceHistory[priceHistory.length-1] >= priceHistory[0];
+    const col = up ? '#00c805' : '#ef4444';
+    c.innerHTML = `
+        <svg width="100%" height="100%" viewBox="0 0 ${w} ${h}" style="overflow:visible;">
+            <defs>
+                <linearGradient id="ag" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="${col}" stop-opacity="0.12"/>
+                    <stop offset="100%" stop-color="${col}" stop-opacity="0"/>
+                </linearGradient>
+            </defs>
+            <polygon points="${area}" fill="url(#ag)"/>
+            <polyline points="${poly}" fill="none" stroke="${col}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <line id="hover-line" x1="0" y1="0" x2="0" y2="0" stroke="rgba(0,0,0,0.15)" stroke-width="1" stroke-dasharray="3,3" style="display:none;" />
+            <circle id="hover-dot" cx="0" cy="0" r="4" fill="${col}" stroke="#ffffff" stroke-width="2" style="display:none;" />
+        </svg>
+        <div id="chart-tooltip" style="display:none; position:absolute; background:#1e293b; color:#fff; padding:5px 9px; border-radius:6px; font-size:11px; pointer-events:none; z-index:10; box-shadow:0 4px 12px rgba(0,0,0,0.15); transform:translate(-50%,-120%); font-family:inherit;">
+            <div id="tooltip-time" style="color:#94a3b8; font-size:9px; font-weight:600;"></div>
+            <div id="tooltip-price" style="font-weight:700; font-size:12px; color:#00c805;"></div>
+        </div>
+    `;
+    setupChartHover(pts, pad, pw);
+}
+
+function setupChartHover(pts, pad, pw) {
+    const container = document.getElementById('chart-svg-container');
+    const tooltip = document.getElementById('chart-tooltip');
+    if (!container) return;
+
+    container.onmousemove = function(e) {
+        const rect = container.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const relativeX = mouseX - pad.left;
+        const ratio = relativeX / pw;
+        let idx = Math.round(ratio * (pts.length - 1));
+        idx = Math.max(0, Math.min(pts.length - 1, idx));
+        const pt = pts[idx];
+        const hoverLine = document.getElementById('hover-line');
+        const hoverDot = document.getElementById('hover-dot');
+        if (hoverLine && hoverDot && pt) {
+            hoverLine.setAttribute('x1', pt.x); hoverLine.setAttribute('y1', pad.top);
+            hoverLine.setAttribute('x2', pt.x); hoverLine.setAttribute('y2', rect.height - pad.bottom);
+            hoverLine.style.display = 'inline';
+            hoverDot.setAttribute('cx', pt.x); hoverDot.setAttribute('cy', pt.y);
+            hoverDot.style.display = 'inline';
+            if (tooltip) {
+                tooltip.style.display = 'block';
+                tooltip.style.left = `${pt.x}px`; tooltip.style.top = `${pt.y}px`;
+                const ttTime = document.getElementById('tooltip-time');
+                if (ttTime) ttTime.textContent = timeLabels[pt.i] || '';
+                const ttPrice = document.getElementById('tooltip-price');
+                if (ttPrice) ttPrice.textContent = `$${pt.price.toFixed(2)}`;
+            }
+        }
+    };
+    container.onmouseleave = function() {
+        const hoverLine = document.getElementById('hover-line');
+        const hoverDot = document.getElementById('hover-dot');
+        if (hoverLine) hoverLine.style.display = 'none';
+        if (hoverDot) hoverDot.style.display = 'none';
+        if (tooltip) tooltip.style.display = 'none';
+    };
+}
+
+function switchTimeframe(tf, btn) {
+    document.querySelectorAll('.time-tab').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    initPriceHistory(); drawChart();
+}
+
+// ==================================================
+// BONDS UI
+// ==================================================
+function renderBondsGrid(cat='all') {
+    activeBondCategory = cat;
+    const c = document.getElementById('bonds-grid-container');
+    if (!c) return;
+    c.innerHTML = '';
+    let list = getActiveExchangeBonds();
+    if (cat!=='all') list = list.filter(b=>b.category===cat);
+    list.forEach(bond => {
+        const sel = bond.id===selectedBondId && activeAssetMode==='bonds';
+        const card = document.createElement('div');
+        card.className = `bond-card-item ${sel?'selected-active':''}`;
+        card.innerHTML = `<div><div class="bond-card-header"><div><div class="bond-issuer">${bond.issuer}</div><div class="bond-name">${bond.name}</div></div><span class="bond-badge ${bond.badgeClass}">${bond.badgeText}</span></div><div class="bond-ratings-row"><span class="rating-tag"><span class="rating-agency">Moody's:</span> <span class="rating-value ${getRatingClass(bond.ratings.moodys)}">${bond.ratings.moodys}</span></span><span class="rating-tag"><span class="rating-agency">S&P:</span> <span class="rating-value ${getRatingClass(bond.ratings.sp)}">${bond.ratings.sp}</span></span><span class="rating-tag"><span class="rating-agency">Fitch:</span> <span class="rating-value ${getRatingClass(bond.ratings.fitch)}">${bond.ratings.fitch}</span></span></div></div><div style="font-size:10px;color:#94a3b8;"><strong>Tax:</strong> ${bond.taxStatus}</div><div class="bond-metrics"><div class="metric-cell"><span class="metric-lbl">Coupon</span><span class="metric-val">${bond.coupon}</span></div><div class="metric-cell"><span class="metric-lbl">YTM</span><span class="metric-val ytm-green">${bond.ytm.toFixed(2)}%</span></div><div class="metric-cell"><span class="metric-lbl">Par</span><span class="metric-val">${bond.pricePar.toFixed(2)}%</span></div></div><button class="bond-buy-btn ${sel?'selected-btn':''}" onclick="selectBond('${bond.id}')">${sel?'✓ Selected':'⚡ Trade Bond'}</button>`;
+        c.appendChild(card);
+    });
+}
+
+function filterBondsCategory(cat) {
+    document.querySelectorAll('.bond-cat-btn').forEach(b=>b.classList.remove('active'));
+    event.target.classList.add('active');
+    renderBondsGrid(cat);
+}
+
+function selectBond(id) { selectedBondId=id; switchAssetMode('bonds'); renderBondsGrid(activeBondCategory); }
+function selectBondFromDropdown(id) { selectedBondId=id; updateBondBanner(); renderBondsGrid(activeBondCategory); updateCalculations(); }
+
+function updateBondDropdown() {
+    const s = document.getElementById('bond-instrument-select');
+    if (!s) return;
+    s.innerHTML = '';
+    getActiveExchangeBonds().forEach(b => {
+        const o = document.createElement('option');
+        o.value = b.id;
+        o.textContent = `[${b.ratings.moodys}] ${b.name} (${b.ytm}% YTM)`;
+        if (b.id===selectedBondId) o.selected = true;
+        s.appendChild(o);
+    });
+}
+
+function updateBondBanner() {
+    try {
+        const list = getActiveExchangeBonds();
+        const bond = list.find(b=>b.id===selectedBondId) || list[0];
+        const n = document.getElementById('banner-bond-name');
+        if (n) n.textContent = bond.name;
+        const bg = document.getElementById('banner-bond-badge');
+        if (bg) { bg.className = `bond-badge ${bond.badgeClass}`; bg.textContent = bond.badgeText; }
+        const sub = document.getElementById('banner-bond-sub');
+        if (sub) sub.textContent = `Coupon: ${bond.coupon} • YTM: ${bond.ytm.toFixed(2)}% • Par: ${bond.pricePar.toFixed(2)}% ($${bond.pricePerUnit.toFixed(2)}/unit) • ${bond.taxStatus}`;
+        const rc = document.getElementById('banner-bond-ratings');
+        if (rc) rc.innerHTML = `<span class="rating-tag"><span class="rating-agency">Moody's:</span> <span class="rating-value ${getRatingClass(bond.ratings.moodys)}">${bond.ratings.moodys}</span></span><span class="rating-tag"><span class="rating-agency">S&P:</span> <span class="rating-value ${getRatingClass(bond.ratings.sp)}">${bond.ratings.sp}</span></span><span class="rating-tag"><span class="rating-agency">Fitch:</span> <span class="rating-value ${getRatingClass(bond.ratings.fitch)}">${bond.ratings.fitch}</span></span>`;
+    } catch(e) { console.warn(e); }
+}
+
+function switchAssetMode(mode) {
+    activeAssetMode = mode;
+    const sb = document.getElementById('mode-stock-btn'), bb = document.getElementById('mode-bond-btn');
+    const bn = document.getElementById('bond-selected-banner'), bf = document.getElementById('bond-selector-field');
+    const tb = document.getElementById('tab-buy'), ts = document.getElementById('tab-sell');
+    if (mode==='bonds') {
+        if(sb) sb.className='asset-mode-btn'; if(bb) bb.className='asset-mode-btn active-bond';
+        if(bn) bn.style.display='block'; if(bf) bf.style.display='block';
+        if(tb) tb.textContent='Buy Bonds'; if(ts) ts.textContent='Sell Bonds';
+        updateBondDropdown(); updateBondBanner();
+    } else {
+        if(sb) sb.className='asset-mode-btn active'; if(bb) bb.className='asset-mode-btn';
+        if(bn) bn.style.display='none'; if(bf) bf.style.display='none';
+        if(tb) tb.textContent=`Buy ${currentStock.symbol}`; if(ts) ts.textContent=`Sell ${currentStock.symbol}`;
+    }
+    renderBondsGrid(activeBondCategory); updateCalculations(); checkUserExchangeCompliance();
+}
+
+// ==================================================
+// EXCHANGE & GAINERS
+// ==================================================
+function changeExchange(ex) {
+    currentExchange = ex;
+    const info = exchangeData[ex];
+    currentStock = info.stocks[0]; currentPrice = currentStock.price; prevPrice = currentPrice;
+    document.getElementById('exchange-select').value = ex;
+    document.getElementById('active-exchange-flag').textContent = info.flag;
+    document.getElementById('stock-symbol').textContent = currentStock.symbol;
+    document.getElementById('stock-name').textContent = currentStock.name;
+    document.getElementById('stock-exchange-tag').textContent = `${info.name} (${info.country})`;
+    document.getElementById('stock-price').textContent = `$${currentPrice.toFixed(2)}`;
+    const isUp = currentStock.change >= 0;
+    const chEl = document.getElementById('stock-change');
+    chEl.textContent = `${isUp?'+':''}${currentStock.change.toFixed(2)} (${isUp?'+':''}${currentStock.changePercent.toFixed(2)}%) Today`;
+    chEl.className = `stock-change ${isUp?'':'negative'}`;
+    document.getElementById('gainers-exchange-label').textContent = info.name;
+    setCurrency(info.currency); initPriceHistory(); updateTopGainers();
+    const al = getActiveExchangeBonds(); if (al.length) selectedBondId = al[0].id;
+    const sub = document.querySelector('.bonds-subtitle');
+    if (sub) sub.textContent = `${info.name} Fixed Income: ${info.country} Municipal Bonds, ${info.currency} Sovereign Debt & Apple Notes`;
+    renderBondsGrid(activeBondCategory); updateBondDropdown(); updateBondBanner(); updateCalculations(); drawChart();
+    checkUserExchangeCompliance();
+}
+
+function updateTopGainers() {
+    const c = document.getElementById('top-gainers-list');
+    if (!c) return;
+    c.innerHTML = '';
+    const info = exchangeData[currentExchange];
+    info.stocks.forEach(stock => {
+        const d = document.createElement('div');
+        d.className = 'gainer-item';
+        d.onclick = () => updateCurrentStock(stock);
+        const up = stock.change >= 0;
+        const sym = currencySymbols[info.currency] || '$';
+        d.innerHTML = `<div class="gainer-info"><span class="gainer-symbol">${stock.symbol}</span><span class="gainer-name">${stock.name}</span></div><div class="gainer-stats"><span class="gainer-price">${sym}${stock.price.toFixed(2)}</span><span class="gainer-change">${up?'+':''}${stock.changePercent.toFixed(2)}%</span></div>`;
+        c.appendChild(d);
+    });
+}
+
+function updateCurrentStock(stock) {
+    currentStock = stock; currentPrice = stock.price; prevPrice = stock.price;
+    document.getElementById('stock-symbol').textContent = stock.symbol;
+    document.getElementById('stock-name').textContent = stock.name;
+    document.getElementById('stock-price').textContent = `$${stock.price.toFixed(2)}`;
+    const up = stock.change >= 0;
+    const ch = document.getElementById('stock-change');
+    ch.textContent = `${up?'+':''}${stock.change.toFixed(2)} (${up?'+':''}${stock.changePercent.toFixed(2)}%) Today`;
+    ch.className = `stock-change ${up?'':'negative'}`;
+    initPriceHistory(); updateCalculations(); drawChart();
+}
+
+// ==================================================
+// INIT & TICKERS
+// ==================================================
+document.addEventListener('DOMContentLoaded', () => {
+    initPriceHistory();
+    updateCurrencyUI(); updateCalculations(); updateLedgerDisplay();
+    updateTopGainers(); renderBondsGrid('all'); updateBondDropdown(); updateBondBanner();
+    drawChart(); checkUserExchangeCompliance();
+    setInterval(tickPrice, 2000);
+    setInterval(simulateTrades, 3500);
+    setInterval(simulateFX, 5000);
+});
+
+function tickPrice() {
+    const drift = 0.0001, vol = 0.00085;
+    prevPrice = currentPrice;
+    currentPrice *= (1 + (Math.random()-0.49)*vol + drift);
+    if (priceHistory.length) { priceHistory.push(currentPrice); priceHistory.shift(); }
+    if (timeLabels.length) { timeLabels.push(new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})); timeLabels.shift(); }
+    document.getElementById('stock-price').textContent = `$${currentPrice.toFixed(2)}`;
+    updateCurrencyUI(); updateCalculations(); drawChart();
+}
+
+function simulateTrades() {
+    const tranches = ['SGA-East','SGA-West','EUR Tranche','GBP Tranche','JPY Tranche','HKD Tranche'];
+    const currs = ['USD','EUR','GBP','JPY','SAR','HKD'];
+    const side = Math.random()>0.5 ? 'BUY' : 'SELL';
+    const qty = Math.floor(Math.random()*35)+1;
+    const pr = currentPrice + (Math.random()-0.5)*0.12;
+    const cr = currs[Math.floor(Math.random()*currs.length)];
+    const rate = fxRates[cr]||1;
+    recentTrades.unshift({ time:new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'}), routing:tranches[Math.floor(Math.random()*tranches.length)], side, shares:qty.toString(), priceUSD:pr, currency:cr, totalNative:qty*pr*rate });
+    if (recentTrades.length > 20) recentTrades.pop();
+    updateTradesTable();
+}
+
+function simulateFX() {
+    const keys = Object.keys(fxRates).filter(c=>c!=='USD');
+    const t = keys[Math.floor(Math.random()*keys.length)];
+    fxRates[t] = Math.max(0.1, fxRates[t] * (1 + (Math.random()-0.5)*0.0012));
+    updateCurrencyUI(); updateCalculations(); updateLedgerDisplay();
+}
+
+window.addEventListener('resize', drawChart);
+</script>
+</body>
+</html>

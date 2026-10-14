@@ -1,0 +1,1558 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>SGA — 1356 States/Provinces Worldwide: Stock & Futures</title>
+<style>
+  :root {
+    --bg:#0b1020; --panel:#131a30; --panel2:#1a2340; --border:#2a3556;
+    --text:#e8ecf7; --muted:#8c96b8; --accent:#4fd1c5; --accent2:#f6ad55; --good:#48bb78; --bad:#f56565; --fut:#c084fc;
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; background:var(--bg); color:var(--text); padding:24px; }
+  .wrap { max-width:1250px; margin:0 auto; }
+  h1 { font-size:21px; margin:0 0 4px 0; }
+  .sub { color:var(--muted); font-size:12.5px; margin-bottom:18px; line-height:1.5; }
+
+  .summary { display:flex; gap:14px; margin-bottom:18px; flex-wrap:wrap; }
+  .card { flex:1; min-width:200px; background:linear-gradient(135deg,var(--panel2),var(--panel)); border:1px solid var(--border); border-radius:12px; padding:14px 16px; }
+  .card .tag { font-size:10.5px; text-transform:uppercase; letter-spacing:.07em; color:var(--muted); margin-bottom:6px; }
+  .card .big { font-size:19px; font-weight:800; }
+  .card .small { font-size:11px; color:var(--muted); margin-top:4px; }
+  .card.stock .big { color: var(--accent); }
+  .card.fut .big { color: var(--fut); }
+
+  .controls { background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:14px 16px; margin-bottom:18px; }
+  .controls .row { display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+  .controls label { font-size:12px; color:var(--muted); display:flex; align-items:center; gap:6px; }
+  input[type=number] { width:85px; background:#0d1326; border:1px solid var(--border); color:var(--text); border-radius:6px; padding:5px 8px; font-size:12px; font-family:inherit; }
+  input[type=number]:focus { outline:none; border-color:var(--accent); }
+
+  table { width:100%; border-collapse:collapse; font-size:11.5px; background:var(--panel); border:1px solid var(--border); border-radius:12px; overflow:hidden; }
+  thead th { text-align:right; padding:8px 10px; background:var(--panel2); color:var(--muted); font-size:10px; text-transform:uppercase; letter-spacing:.04em; border-bottom:1px solid var(--border); }
+  thead th:first-child, tbody td:first-child { text-align:left; }
+  thead tr.group th { background: #0d1326; border-bottom: none; font-size: 10px; }
+  tbody td { padding:6px 10px; text-align:right; border-bottom:1px solid var(--border); white-space:nowrap; }
+  tbody tr:hover { background:rgba(79,209,197,0.06); }
+  tbody tr:last-child td { border-bottom:none; }
+  .rank { color:var(--muted); font-size:10px; width:20px; }
+  .colfut { color: var(--fut); }
+  .colstock { color: var(--accent); }
+  .colgain { color: var(--good); font-weight:600; }
+  .scrollwrap { overflow-x:auto; }
+
+  .tabs { display:flex; gap:8px; margin-bottom:18px; }
+  .tab-btn {
+    background: var(--panel); border:1px solid var(--border); color: var(--muted);
+    padding: 10px 20px; border-radius: 10px; font-size: 13px; font-weight:600; cursor:pointer;
+    font-family: inherit; transition: all 0.15s ease;
+  }
+  .tab-btn:hover { color: var(--text); }
+  .tab-btn.active.tab-stock { background: linear-gradient(135deg, var(--panel2), var(--panel)); color: var(--accent); border-color: var(--accent); }
+  .tab-btn.active.tab-fut { background: linear-gradient(135deg, var(--panel2), var(--panel)); color: var(--fut); border-color: var(--fut); }
+  .tabpanel { display:none; }
+  .tabpanel.active { display:block; }
+  .footer-note { margin-top:18px; font-size:11.5px; color:var(--muted); line-height:1.6; padding:14px 16px; background:var(--panel); border:1px solid var(--border); border-radius:10px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>SGA — 470 States/Provinces Worldwide: Stock & Futures</h1>
+  <div class="sub">
+    50 U.S. states + 1306 international provinces/states/regions (China, Germany, Canada, Japan, France, India, Brazil, UK, South Korea, Australia, Italy). <b>Data quality varies:</b> all U.S. states and Chinese provinces use solid, sourced figures; several other countries' entries are commonly-cited approximations, not independently verified this session — treat as directionally right, not precise.<br><br>
+    Futures: quoted price = EOI directly (0-~270 range), notional = EOI × multiplier. Stock: no-premium market cap = GDP, price target = market cap ÷ shares (state+fed own 100% pre-IPO at the given capital &amp; entry price).
+  </div>
+
+  <div class="tabs">
+    <button class="tab-btn tab-stock active" id="btnStock" onclick="showTab('stock')">📈 Stocks</button>
+    <button class="tab-btn tab-fut" id="btnFut" onclick="showTab('fut')">📊 Futures</button>
+  </div>
+
+  <!-- STOCKS TAB -->
+  <div class="tabpanel active" id="panelStock">
+    <div class="controls">
+      <div class="row">
+        <label>Stock capital, state+fed ($M) <input type="number" id="capTotal" value="400" step="1"></label>
+        <label>Stock entry price ($) <input type="number" id="entry" value="0.01" step="any"></label>
+        <label>Shares outstanding per state (B) <input type="number" id="sharesOutstanding" value="40" step="0.01"></label>
+        <button class="tab-btn" id="btnResetShares" style="padding:6px 12px; font-size:11.5px;" onclick="resetShares()">Reset to 100% ownership</button>
+      </div>
+      <div class="row" style="margin-top:10px; padding-top:10px; border-top:1px solid var(--border);">
+        <label>Fed ownership % <input type="number" id="fedPct" value="20" step="1"></label>
+        <label>State ownership % <input type="number" id="statePct" value="20" step="1"></label>
+        <span style="font-size:11.5px; color:var(--muted);">— computes Fed/State equity directly as a % of market cap, alongside the shares-based price target below</span>
+      </div>
+      <div class="row" style="margin-top:10px; padding-top:10px; border-top:1px solid var(--border);">
+        <label>💰 My total portfolio investment ($) <input type="number" id="myStockInvestment" value="10000" step="100"></label>
+        <span style="font-size:11.5px; color:var(--muted);">— split evenly across all 1356 entities, buying shares at the entry price above</span>
+      </div>
+    </div>
+
+    <div class="summary">
+      <div class="card" style="border-color: var(--good);">
+        <div class="tag">My Investment (split across all 470)</div>
+        <div class="big" id="myStockInvested">—</div>
+        <div class="small" id="myStockPerEntity">—</div>
+      </div>
+      <div class="card" style="border-color: var(--good);">
+        <div class="tag">My Total Value at Price Targets</div>
+        <div class="big" id="myStockValue" style="color:var(--good);">—</div>
+      </div>
+      <div class="card" style="border-color: var(--good);">
+        <div class="tag">My Total Gain</div>
+        <div class="big" id="myStockGain" style="color:var(--good);">—</div>
+      </div>
+    </div>
+
+    <div class="summary">
+      <div class="card stock">
+        <div class="tag">Total Stock Market Cap (1356 entities)</div>
+        <div class="big" id="totStockCap">—</div>
+      </div>
+      <div class="card">
+        <div class="tag">Total Capital Deployed</div>
+        <div class="big" id="totStockCapital">—</div>
+      </div>
+      <div class="card">
+        <div class="tag">Effective Ownership % (shares-based)</div>
+        <div class="big" id="ownershipPct">—</div>
+      </div>
+      <div class="card">
+        <div class="tag">Combined Stock Gain (1356 entities)</div>
+        <div class="big" id="totStockGain">—</div>
+      </div>
+      <div class="card" style="border-color: var(--accent2);">
+        <div class="tag">Sum of ALL Gain % (every entity added together)</div>
+        <div class="big" id="sumStockGainPct" style="color:var(--accent2);">—</div>
+        <div class="small">Not a portfolio return — literally every row's % added up</div>
+      </div>
+    </div>
+
+    <div class="summary">
+      <div class="card">
+        <div class="tag">Fed Gov Equity (all 1356 entities, % mode)</div>
+        <div class="big" id="totFedEquity">—</div>
+      </div>
+      <div class="card">
+        <div class="tag">State/Regional Govs Equity (all 470, % mode)</div>
+        <div class="big" id="totStateEquity">—</div>
+      </div>
+      <div class="card">
+        <div class="tag">Public Float Remaining</div>
+        <div class="big" id="publicFloatPct">—</div>
+        <div class="small" id="publicFloatVal">—</div>
+      </div>
+    </div>
+
+    <div class="scrollwrap">
+    <table>
+      <thead>
+        <tr><th>#</th><th>State</th><th>Market Cap</th><th>Shares Out.</th><th>Price Target</th><th>Gain to Target</th><th>Fed Equity (%)</th><th>State Equity (%)</th></tr>
+      </thead>
+      <tbody id="tbodyStock"></tbody>
+    </table>
+    </div>
+
+    <div class="footer-note">
+      <b>Two modes shown side by side:</b> Price Target &amp; Gain columns use the shares-outstanding model (capital ÷ entry ÷ shares). Fed/State Equity columns use the direct ownership-percentage model (just % × market cap). They're independent — you can have shares-based ownership be 100% while also viewing what a flat 20%/20% government split would be worth, for comparison.
+    </div>
+  </div>
+
+  <!-- FUTURES TAB -->
+  <div class="tabpanel" id="panelFut">
+    <div class="controls">
+      <div class="row">
+        <label>State CPI (%) <input type="number" id="cpi" value="2.8" step="0.1"></label>
+        <label>Futures multiplier ($/pt) <input type="number" id="mult" value="2000" step="1"></label>
+        <label>Seed price ($) <input type="number" id="futSeed" value="54396.39" step="any"></label>
+        <label>Leverage <input type="number" id="futLeverage" value="20" step="1">x</label>
+        <label>Daily price limit (%) <input type="number" id="dailyLimit" value="10" step="1"></label>
+      </div>
+      <div class="row" style="margin-top:10px; padding-top:10px; border-top:1px solid var(--border);">
+        <span style="font-size:11.5px; color:var(--muted);">Days-to-target uses a liquidity tier by market cap (bigger economies get a smaller effective daily limit — thinner relative float per dollar of notional needed to move price — see note below).</span>
+      </div>
+      <div class="row" style="margin-top:10px; padding-top:10px; border-top:1px solid var(--border);">
+        <label>💰 My total portfolio investment ($) <input type="number" id="myFutInvestment" value="10000" step="100"></label>
+        <span style="font-size:11.5px; color:var(--muted);">— split evenly across all 1356 contracts as margin, at the leverage above</span>
+      </div>
+    </div>
+
+    <div class="summary">
+      <div class="card" style="border-color: var(--fut);">
+        <div class="tag">My Investment (split across all 470)</div>
+        <div class="big" id="myFutInvested">—</div>
+        <div class="small" id="myFutPerEntity">—</div>
+      </div>
+      <div class="card" style="border-color: var(--fut);">
+        <div class="tag">My Total Value at Price Targets</div>
+        <div class="big" id="myFutValue" style="color:var(--fut);">—</div>
+      </div>
+      <div class="card" style="border-color: var(--fut);">
+        <div class="tag">My Total Gain (levered)</div>
+        <div class="big" id="myFutGain" style="color:var(--fut);">—</div>
+      </div>
+    </div>
+
+    <div class="summary">
+      <div class="card fut">
+        <div class="tag">Total Futures Notional (1356 entities)</div>
+        <div class="big" id="totFutNotional">—</div>
+      </div>
+      <div class="card">
+        <div class="tag">EOI Range Across States</div>
+        <div class="big" id="eoiRange">—</div>
+      </div>
+      <div class="card">
+        <div class="tag">Inflation Factor Applied</div>
+        <div class="big" id="inflationOut">—</div>
+      </div>
+      <div class="card">
+        <div class="tag">Combined Gain (unlevered / levered)</div>
+        <div class="big" id="totFutGain">—</div>
+      </div>
+    </div>
+
+    <div class="summary">
+      <div class="card" style="border-color: var(--accent2);">
+        <div class="tag">Sum of ALL Gain % — 1x (every entity added together)</div>
+        <div class="big" id="sumFutGainPct" style="color:var(--accent2);">—</div>
+        <div class="small">Not a portfolio return — literally every row's % added up</div>
+      </div>
+      <div class="card" style="border-color: var(--accent2);">
+        <div class="tag">Sum of ALL Gain % — Levered</div>
+        <div class="big" id="sumFutGainLevPct" style="color:var(--accent2);">—</div>
+        <div class="small">Sum of the levered column, all 470 rows</div>
+      </div>
+    </div>
+
+    <div class="scrollwrap">
+    <table>
+      <thead>
+        <tr><th>#</th><th>State</th><th>Seed Price ($)</th><th>EOI</th><th>Price Target ($)</th><th>Gain (1x)</th><th>Gain (levered)</th><th>Days to Fair Value</th></tr>
+      </thead>
+      <tbody id="tbodyFut"></tbody>
+    </table>
+    </div>
+
+    <div class="footer-note">
+      <b>Seed price is now in dollars</b> — the actual entry price of the contract — compared directly against the price target (EOI × multiplier, also in dollars). Gain % = (Price Target − Seed) ÷ Seed. Leverage multiplies that gain directly (Gain × Leverage), same relationship used earlier: futures return = leverage × underlying % move. One flat seed price applies to every state here, so states with a higher price target (bigger EOI) show a bigger gain off the same seed — adjust seed per-state manually if you want each state normalized to its own starting discount instead.<br><br>
+      <b>Days to Fair Value — read this carefully:</b> this is a <i>modeling estimate, not a prediction</i>. It reuses the daily price-limit convergence math from earlier (seed price walking up toward the target under a capped daily move), adjusted by a liquidity tier based on market cap: mega economies (>$1T GDP) get 60% of the stated daily limit (assumed deeper, slower-moving market), large ($200B-$1T) get 80%, mid-size ($50B-$200B) trade at the stated limit, small (<$50B) get 130% (assumed thinner float, so percentage moves happen faster — but also far more prone to gaps and failed fills, which this number does NOT capture). <b>These liquidity-tier multipliers (0.6/0.8/1.0/1.3) are assumptions I set for this model, not derived from real trading data — no SGA has ever traded, so there is no real volatility or liquidity history to calibrate against.</b>
+    </div>
+  </div>
+</div>
+
+
+<script>
+const states = [
+["California",4103124,"US"],["Texas",2709393,"US"],["New York",2297028,"US"],["Florida",1705565,"US"],
+["Illinois",1137244,"US"],["Pennsylvania",1024206,"US"],["Ohio",927740,"US"],["Georgia",882535,"US"],
+["Washington",854683,"US"],["New Jersey",846587,"US"],["North Carolina",839122,"US"],["Massachusetts",780666,"US"],
+["Virginia",764475,"US"],["Michigan",719392,"US"],["Colorado",553323,"US"],["Arizona",552167,"US"],
+["Tennessee",549709,"US"],["Maryland",542766,"US"],["Indiana",527381,"US"],["Minnesota",500851,"US"],
+["Wisconsin",451285,"US"],["Missouri",451201,"US"],["Connecticut",365723,"US"],["South Carolina",349965,"US"],
+["Oregon",331029,"US"],["Louisiana",327782,"US"],["Alabama",321238,"US"],["Utah",300904,"US"],
+["Kentucky",293021,"US"],["Oklahoma",265779,"US"],["Nevada",260728,"US"],["Iowa",257021,"US"],
+["Kansas",234673,"US"],["Arkansas",188723,"US"],["Nebraska",185411,"US"],["Mississippi",157491,"US"],
+["New Mexico",140542,"US"],["Idaho",128132,"US"],["New Hampshire",121189,"US"],["Hawaii",115627,"US"],
+["West Virginia",107660,"US"],["Delaware",103253,"US"],["Maine",98606,"US"],["Rhode Island",82493,"US"],
+["Montana",75999,"US"],["North Dakota",75399,"US"],["South Dakota",75179,"US"],["Alaska",69969,"US"],
+["Wyoming",52946,"US"],["Vermont",45707,"US"],
+// International -- 50 more, GDP in $ millions. See confidence flags in accompanying notes;
+// China figures are solid (2025 NBS data), several others are approximate.
+["Guangdong",2040000,"China"],["Jiangsu",1991000,"China"],["Shandong",1443000,"China"],
+["Zhejiang",1322000,"China"],["Sichuan",946000,"China"],["Henan",932000,"China"],
+["Hubei",876000,"China"],["Fujian",842000,"China"],["Shanghai",793000,"China"],
+["Hunan",774000,"China"],["Anhui",741000,"China"],["Beijing",728000,"China"],
+["Hebei",690000,"China"],["Shaanxi",511000,"China"],["Jiangxi",504000,"China"],
+["Chongqing",472000,"China"],["Liaoning",415000,"China"],
+["North Rhine-Westphalia",941700,"Germany"],["Bavaria",855000,"Germany"],
+["Baden-Württemberg",702200,"Germany"],["Lower Saxony",356400,"Germany"],["Hesse",324000,"Germany"],
+["Ontario",792000,"Canada"],["Quebec",396000,"Canada"],["Alberta",324000,"Canada"],
+["British Columbia",288000,"Canada"],["Saskatchewan",83000,"Canada"],
+["Tokyo",624000,"Japan"],["Osaka",364000,"Japan"],["Aichi",368000,"Japan"],["Kanagawa",241000,"Japan"],
+["Île-de-France",928900,"France"],["Auvergne-Rhône-Alpes",302000,"France"],["Hauts-de-France",184000,"France"],
+["Maharashtra",621680,"India"],["Tamil Nadu",358500,"India"],["Karnataka",379900,"India"],
+["Gujarat",376600,"India"],["Uttar Pradesh",457700,"India"],["Telangana",225500,"India"],
+["Punjab (India)",112700,"India"],
+["São Paulo",700000,"Brazil"],["Rio de Janeiro",300000,"Brazil"],["Minas Gerais",250000,"Brazil"],
+["Greater London",700000,"UK"],["South East England",350000,"UK"],["North West England",250000,"UK"],
+["Gyeonggi Province",450000,"South Korea"],["Seoul",400000,"South Korea"],
+["New South Wales",450000,"Australia"],["Victoria",350000,"Australia"],
+["Lombardy",529200,"Italy"],
+// 20 more added
+["Mexico City",248690,"Mexico"],["State of Mexico",168909,"Mexico"],["Nuevo León",148847,"Mexico"],
+["Jalisco",136900,"Mexico"],["Guanajuato",83567,"Mexico"],["Baja California",72454,"Mexico"],
+["Chihuahua",71364,"Mexico"],
+["Madrid",270000,"Spain"],["Catalonia",290000,"Spain"],
+["Moscow",379740,"Russia"],
+["DKI Jakarta",232871,"Indonesia"],
+["Riyadh Region",250000,"Saudi Arabia"],
+["Masovian (Warsaw)",150000,"Poland"],
+["Zurich",150000,"Switzerland"],
+["Gauteng",180000,"South Africa"],
+["Istanbul",280000,"Turkey"],
+["Dubai",200000,"UAE"],
+["Bangkok",170000,"Thailand"],
+["North Holland",216000,"Netherlands"],
+// 50 more added
+// China -- 14 more real 2025 provinces (indiadatareport.com / Grokipedia, NBS-sourced)
+["Yunnan",460000,"China"],["Guangxi",450000,"China"],["Inner Mongolia",430000,"China"],
+["Guizhou",330000,"China"],["Xinjiang",290000,"China"],["Gansu",190000,"China"],
+["Heilongjiang",280000,"China"],["Jilin",220000,"China"],["Qinghai",70000,"China"],
+["Ningxia",100000,"China"],["Xizang (Tibet)",40000,"China"],["Hainan",130000,"China"],
+["Shanxi",400000,"China"],["Tianjin",260000,"China"],
+// Germany -- 2 more real 2024 (Destatis), 9 estimated (⚠ derived from import-share proxy or general knowledge)
+["Rhineland-Palatinate",198800,"Germany"],["Saxony",174900,"Germany"],
+["Berlin",205200,"Germany"],["Hamburg",140400,"Germany"],["Schleswig-Holstein",118800,"Germany"],
+["Brandenburg",97200,"Germany"],["Saxony-Anhalt",81000,"Germany"],["Thuringia",77800,"Germany"],
+["Mecklenburg-Vorpommern",59400,"Germany"],["Saarland",41000,"Germany"],["Bremen",41000,"Germany"],
+// India -- 10 more (⚠ general estimates, not independently verified this session)
+["Kerala",150000,"India"],["West Bengal",220000,"India"],["Andhra Pradesh",200000,"India"],
+["Rajasthan",180000,"India"],["Madhya Pradesh",190000,"India"],["Haryana",150000,"India"],
+["Bihar",130000,"India"],["Odisha",110000,"India"],["Jharkhand",70000,"India"],["Assam",80000,"India"],
+// Russia -- 4 (⚠ estimates)
+["Moscow Oblast",180000,"Russia"],["Saint Petersburg",128090,"Russia"],
+["Tatarstan",70000,"Russia"],["Sverdlovsk Oblast",65000,"Russia"],
+// Brazil -- 4 more (⚠ estimates)
+["Paraná",150000,"Brazil"],["Rio Grande do Sul",130000,"Brazil"],
+["Bahia",100000,"Brazil"],["Santa Catarina",110000,"Brazil"],
+// Canada -- 3 more (⚠ estimates)
+["Manitoba",75000,"Canada"],["Nova Scotia",40000,"Canada"],["New Brunswick",35000,"Canada"],
+// Misc -- 4 (⚠ estimates)
+["Silesia",90000,"Poland"],["South Holland",220000,"Netherlands"],
+["Ho Chi Minh City",146500,"Vietnam"],["Kano State",40000,"Nigeria"],
+// 50 more added
+// Pakistan -- 4 real, sourced 2026 provincial GSP data
+["Punjab (Pakistan)",265600,"Pakistan"],["Sindh",103900,"Pakistan"],
+["Khyber Pakhtunkhwa",44900,"Pakistan"],["Balochistan",23600,"Pakistan"],
+// Egypt/Nigeria -- real, sourced
+["Cairo",142000,"Egypt"],["Lagos State",259750,"Nigeria"],
+// Rest -- ⚠ estimates, not independently verified this session
+["Buenos Aires Province",180000,"Argentina"],["Santiago Metropolitan",120000,"Chile"],
+["Bogotá D.C.",110000,"Colombia"],["Lima",90000,"Peru"],
+["Metro Manila",100000,"Philippines"],["Cebu",30000,"Philippines"],
+["Selangor",90000,"Malaysia"],["Kuala Lumpur",50000,"Malaysia"],
+["Tehran Province",150000,"Iran"],["Tel Aviv District",120000,"Israel"],
+["Stockholm County",180000,"Sweden"],["Oslo",100000,"Norway"],
+["Flanders",350000,"Belgium"],["Vienna",110000,"Austria"],
+["Lisbon",90000,"Portugal"],["Dublin",180000,"Ireland"],
+["Auckland",90000,"New Zealand"],["Dhaka",130000,"Bangladesh"],
+["Addis Ababa",20000,"Ethiopia"],["Nairobi",40000,"Kenya"],
+["Casablanca-Settat",50000,"Morocco"],["Baghdad",60000,"Iraq"],
+["Almaty",40000,"Kazakhstan"],["Kyiv",40000,"Ukraine"],
+["Prague",100000,"Czech Republic"],["Budapest",90000,"Hungary"],
+["Bucharest-Ilfov",90000,"Romania"],["Attica",130000,"Greece"],
+["Uusimaa (Helsinki)",130000,"Finland"],["Capital Region (Copenhagen)",130000,"Denmark"],
+["Distrito Capital (Caracas)",15000,"Venezuela"],["Guayas (Guayaquil)",40000,"Ecuador"],
+["Rivers State",25000,"Nigeria"],["Federal Capital Territory (Abuja)",30000,"Nigeria"],
+["Makkah Region (Jeddah)",150000,"Saudi Arabia"],["Eastern Province",130000,"Saudi Arabia"],
+["Abu Dhabi",280000,"UAE"],["Western Cape",60000,"South Africa"],
+["KwaZulu-Natal",70000,"South Africa"],["Hanoi",55000,"Vietnam"],
+["West Java",178692,"Indonesia"],["East Java",200525,"Indonesia"],
+["Central Java",115049,"Indonesia"],["North Sumatra",72590,"Indonesia"],
+// 50 more added (round 4)
+// Colombia -- 6 real, sourced (Wikipedia dept. GDP table, 2020 base, scaled 1.45x to ~2025 by nat'l GDP growth)
+["Bogotá D.C. (dept.)",168600,"Colombia"],["Antioquia",107900,"Colombia"],
+["Valle del Cauca",65400,"Colombia"],["Santander",43300,"Colombia"],
+["Cundinamarca",42600,"Colombia"],["Atlántico",30100,"Colombia"],
+// Rest -- ⚠ estimates, not independently verified this session
+["Western Province (Sri Lanka)",30000,"Sri Lanka"],["Yangon",25000,"Myanmar"],
+["Phnom Penh",10000,"Cambodia"],["Vientiane",5000,"Laos"],["Ulaanbaatar",8000,"Mongolia"],
+["Tashkent",15000,"Uzbekistan"],["Baku",40000,"Azerbaijan"],["Tbilisi",15000,"Georgia"],
+["Yerevan",10000,"Armenia"],["Amman",20000,"Jordan"],["Beirut",15000,"Lebanon"],
+["Doha",150000,"Qatar"],["Kuwait City",130000,"Kuwait"],["Muscat",60000,"Oman"],
+["Manama",30000,"Bahrain"],["Tunis",30000,"Tunisia"],["Algiers",50000,"Algeria"],
+["Greater Accra",30000,"Ghana"],["Dar es Salaam",25000,"Tanzania"],["Kampala",15000,"Uganda"],
+["Lusaka",10000,"Zambia"],["Harare",8000,"Zimbabwe"],["Luanda",40000,"Angola"],
+["Maputo",8000,"Mozambique"],["Kathmandu",8000,"Nepal"],["Puerto Rico",118000,"US Territory"],
+["Delhi NCT",130000,"India"],["Chhattisgarh",60000,"India"],["Uttarakhand",40000,"India"],
+["Himachal Pradesh",25000,"India"],["Espírito Santo",60000,"Brazil"],["Pernambuco",55000,"Brazil"],
+["Ceará",45000,"Brazil"],["Zurich Canton",150000,"Switzerland"],["Geneva Canton",60000,"Switzerland"],
+["Vestlandet (Bergen)",50000,"Norway"],["Skåne (Malmö)",60000,"Sweden"],
+["Krasnodar Krai",55000,"Russia"],["Bashkortostan",40000,"Russia"],["Rostov Oblast",40000,"Russia"],
+["Krakow (Malopolska)",55000,"Poland"],["Wielkopolska (Poznan)",60000,"Poland"],
+["South Australia",90000,"Australia"],["Queensland",280000,"Australia"],
+// 50 more added (round 6) -- prioritized real BPS Indonesia data this round
+// Real, sourced (BPS 2024, converted at ~15,800 IDR/USD)
+["Riau",70410,"Indonesia"],["Banten",55293,"Indonesia"],["East Kalimantan",54331,"Indonesia"],
+["South Sulawesi",44066,"Indonesia"],["South Sumatra",42023,"Indonesia"],["Lampung",30625,"Indonesia"],
+["Central Sulawesi",23858,"Indonesia"],["Riau Islands",22306,"Indonesia"],["West Sumatra",21072,"Indonesia"],
+["Jambi",20442,"Indonesia"],["West Kalimantan",18998,"Indonesia"],["Bali",18889,"Indonesia"],
+["South Kalimantan",18153,"Indonesia"],["Aceh",15392,"Indonesia"],["Central Kalimantan",14105,"Indonesia"],
+// Rest of round 6 -- ⚠ estimates, not independently verified this session
+["Karachi (city GDP)",90000,"Pakistan"],["Lahore (city GDP)",60000,"Pakistan"],
+["Faisalabad",20000,"Pakistan"],["Rawalpindi",15000,"Pakistan"],["Chittagong",25000,"Bangladesh"],
+["Khulna",10000,"Bangladesh"],["Rajshahi",8000,"Bangladesh"],["Colombo District",15000,"Sri Lanka"],
+["Kandy",5000,"Sri Lanka"],["Mandalay",8000,"Myanmar"],["Naypyidaw",3000,"Myanmar"],
+["Battambang",3000,"Cambodia"],["Siem Reap",2000,"Cambodia"],["Chiang Mai",20000,"Thailand"],
+["Phuket",8000,"Thailand"],["Cebu (Visayas)",25000,"Philippines"],["Davao",15000,"Philippines"],
+["Penang",40000,"Malaysia"],["Johor",45000,"Malaysia"],["Isfahan Province",25000,"Iran"],
+["Fars Province",20000,"Iran"],["Haifa District",30000,"Israel"],["Jerusalem District",25000,"Israel"],
+["Ankara",90000,"Turkey"],["Izmir",70000,"Turkey"],["Bursa",40000,"Turkey"],
+["Alexandria",40000,"Egypt"],["Giza",30000,"Egypt"],["Casablanca (city)",30000,"Morocco"],
+["Rabat",15000,"Morocco"],["Basra",20000,"Iraq"],["Erbil",15000,"Iraq"],
+["Shymkent",10000,"Kazakhstan"],["Astana",25000,"Kazakhstan"],
+// 50 more added (round 7) -- prioritized real Rosstat data corrections + broader coverage
+// (Moscow and Saint Petersburg above were corrected with real 2023 Rosstat figures this round)
+["Hong Kong",400000,"China"],["Macau",40000,"China"],
+["Guam",6000,"US Territory"],["US Virgin Islands",4000,"US Territory"],
+["Newfoundland and Labrador",30000,"Canada"],["Prince Edward Island",6000,"Canada"],
+["Northwest Territories",4000,"Canada"],["Yukon",3000,"Canada"],["Nunavut",2000,"Canada"],
+["Western Australia",220000,"Australia"],["Tasmania",25000,"Australia"],
+["Australian Capital Territory",30000,"Australia"],["Northern Territory",20000,"Australia"],
+["Wellington Region",30000,"New Zealand"],["Canterbury (Christchurch)",25000,"New Zealand"],
+["Bern Canton",45000,"Switzerland"],["Vaud Canton",55000,"Switzerland"],
+["Rogaland (Stavanger)",40000,"Norway"],["Trondelag (Trondheim)",25000,"Norway"],
+["Ostergotland",20000,"Sweden"],["Pirkanmaa (Tampere)",20000,"Finland"],
+["Southern Denmark",45000,"Denmark"],["North Denmark",20000,"Denmark"],
+["Northern and Western (Ireland)",15000,"Ireland"],["North Brabant",100000,"Netherlands"],
+["Antwerp Province",90000,"Belgium"],["Upper Austria",60000,"Austria"],["Styria",45000,"Austria"],
+["North Region (Porto)",60000,"Portugal"],["Lower Silesia (Wroclaw)",60000,"Poland"],
+["Pomerania (Gdansk)",40000,"Poland"],["Central Bohemia",30000,"Czech Republic"],
+["Pest County",25000,"Hungary"],["Timis County",15000,"Romania"],["Plovdiv Province",10000,"Bulgaria"],
+["Crete",15000,"Greece"],["Busan",90000,"South Korea"],["Incheon",90000,"South Korea"],
+["Fukuoka",190000,"Japan"],["Hokkaido",180000,"Japan"],["Hyogo (Kobe)",190000,"Japan"],
+["Saitama",220000,"Japan"],["Chiba",200000,"Japan"],["Mato Grosso",45000,"Brazil"],
+["Mato Grosso do Sul",25000,"Brazil"],["Maranhao",20000,"Brazil"],["Piaui",10000,"Brazil"],
+["Alagoas",10000,"Brazil"],["Sergipe",8000,"Brazil"],["Rio Grande do Norte",15000,"Brazil"],
+// 50 more added (round 8) -- prioritizing genuinely high-market-cap entities not yet added
+// High-value: Taiwan (real, major economy), Tyumen Oblast (real, Rosstat 2022), UK constituent nations (⚠ est.)
+["Taiwan",780000,"Taiwan"],["Tyumen Oblast",190000,"Russia"],
+["Scotland",220000,"UK"],["Wales",95000,"UK"],["Northern Ireland",55000,"UK"],
+// Rest -- ⚠ estimates, filling remaining first-level divisions not yet covered
+["Yamalo-Nenets Autonomous Okrug",90000,"Russia"],["Khuzestan",40000,"Iran"],
+["Atyrau Region",45000,"Kazakhstan"],["Zulia",30000,"Venezuela"],["Delta State",30000,"Nigeria"],
+["Goa",15000,"India"],["Tripura",6000,"India"],["Manipur",4000,"India"],["Meghalaya",5000,"India"],
+["Nagaland",3000,"India"],["Mizoram",3000,"India"],["Sikkim",3000,"India"],
+["Arunachal Pradesh",4000,"India"],["Jammu and Kashmir",25000,"India"],["Chandigarh",5000,"India"],
+["Panama City Region",40000,"Panama"],["San Jose Region",30000,"Costa Rica"],
+["Havana Province",20000,"Cuba"],["Santo Domingo",25000,"Dominican Republic"],
+["Copperbelt Province",8000,"Zambia"],["Ashanti Region",15000,"Ghana"],
+["Coastal Region (Mombasa)",10000,"Kenya"],["Katanga (Lubumbashi)",10000,"DR Congo"],
+["Kinshasa",15000,"DR Congo"],["Belgrade",20000,"Serbia"],["Sarajevo Canton",5000,"Bosnia"],
+["Skopje",5000,"North Macedonia"],["Podgorica",3000,"Montenegro"],["Pristina",3000,"Kosovo"],
+["Reykjavik",15000,"Iceland"],["Luxembourg City",45000,"Luxembourg"],["Bishkek",5000,"Kyrgyzstan"],
+["Dushanbe",3000,"Tajikistan"],["Ashgabat",8000,"Turkmenistan"],["Sharjah",45000,"UAE"],
+["Medina Region",30000,"Saudi Arabia"],["Al Ahmadi",25000,"Kuwait"],["Da Nang",12000,"Vietnam"],
+["Haiphong",20000,"Vietnam"],["Can Tho",8000,"Vietnam"],["Hoi An (Quang Nam)",5000,"Vietnam"],
+["Suez Governorate",8000,"Egypt"],["Sfax",8000,"Tunisia"],["Oran",10000,"Algeria"],
+["Marrakesh-Safi",15000,"Morocco"],
+// 50 more added (round 5) -- prioritized real Eurostat NUTS2 data this round
+// Real, sourced (Eurostat NUTS2, 2023/2024)
+["Oberbayern (Upper Bavaria)",378000,"Germany"],["Düsseldorf",291600,"Germany"],
+["Stuttgart",291600,"Germany"],["Darmstadt",288100,"Germany"],
+["Eastern and Midland",291600,"Ireland"],
+// Rest -- ⚠ estimates, not independently verified this session
+["Andalucía",190000,"Spain"],["Comunidad Valenciana",130000,"Spain"],["Basque Country",90000,"Spain"],
+["Rhône-Alpes (Lyon)",130000,"France"],["Provence-Alpes-Côte d'Azur",180000,"France"],
+["Nouvelle-Aquitaine",200000,"France"],["Lazio (Rome)",220000,"Italy"],["Veneto",180000,"Italy"],
+["Emilia-Romagna",170000,"Italy"],["Piedmont (Turin)",140000,"Italy"],
+["Mazovian (Warsaw region)",130000,"Poland"],["South Moravia (Brno)",30000,"Czech Republic"],
+["Vienna region",110000,"Austria"],["Flevoland",20000,"Netherlands"],["Utrecht",90000,"Netherlands"],
+["West Flanders",50000,"Belgium"],["Brussels-Capital",90000,"Belgium"],
+["Southern and Eastern (Ireland)",300000,"Ireland"],["Västra Götaland (Gothenburg)",90000,"Sweden"],
+["Central Denmark",60000,"Denmark"],["Southwest Finland (Turku)",30000,"Finland"],
+["Bratislava region",40000,"Slovakia"],["Ljubljana region",25000,"Slovenia"],["Zagreb",25000,"Croatia"],
+["Sofia",30000,"Bulgaria"],["Cluj (Transylvania)",20000,"Romania"],
+["Thessaloniki (Central Macedonia)",30000,"Greece"],["Lisbon Metro",100000,"Portugal"],
+["Porto (North Region)",60000,"Portugal"],["Novosibirsk Oblast",30000,"Russia"],
+["Chelyabinsk Oblast",30000,"Russia"],["Samara Oblast",30000,"Russia"],
+["Nizhny Novgorod Oblast",30000,"Russia"],["Perm Krai",25000,"Russia"],["Goiás",45000,"Brazil"],
+["Amazonas (Manaus)",35000,"Brazil"],["Pará",35000,"Brazil"],["Distrito Federal (Brasília)",90000,"Brazil"],
+["Puebla",40000,"Mexico"],["Veracruz",45000,"Mexico"],["Coahuila",40000,"Mexico"],
+["Sonora",30000,"Mexico"],["Yucatán",20000,"Mexico"],["Quintana Roo",20000,"Mexico"],
+["Michoacán",20000,"Mexico"],
+["Berat",529,"Albania"],,
+["Dibër",464,"Albania"],,
+["Durrës",1568,"Albania"],,
+["Elbasan",1023,"Albania"],,
+["Fier",1705,"Albania"],,
+["Gjirokastër",340,"Albania"],,
+["Korçë",830,"Albania"],,
+["Kukës",249,"Albania"],,
+["Lezhë",482,"Albania"],,
+["Shkodër",783,"Albania"],,
+["Tiranë",6579,"Albania"],,
+["Vlorë",848,"Albania"],,
+["Bonaire",553,"Netherlands Antilles"],,
+["Saba",47,"Netherlands Antilles"],,
+["Saint Eustatius",120,"Netherlands Antilles"],,
+["Buenos Aires",120857,"Argentina"],,
+["Catamarca",2138,"Argentina"],,
+["Chaco",5980,"Argentina"],,
+["Chubut",7989,"Argentina"],,
+["Ciudad de Buenos Aires",77269,"Argentina"],,
+["Córdoba",32782,"Argentina"],,
+["Corrientes",4955,"Argentina"],,
+["Entre Ríos",10479,"Argentina"],,
+["Formosa",2265,"Argentina"],,
+["Jujuy",3747,"Argentina"],,
+["La Pampa",3954,"Argentina"],,
+["La Rioja",2152,"Argentina"],,
+["Mendoza",13507,"Argentina"],,
+["Misiones",4735,"Argentina"],,
+["Neuquén",10315,"Argentina"],,
+["Río Negro",5581,"Argentina"],,
+["Salta",7070,"Argentina"],,
+["San Juan",4800,"Argentina"],,
+["San Luis",3801,"Argentina"],,
+["Santa Cruz",5879,"Argentina"],,
+["Santa Fe",29813,"Argentina"],,
+["Santiago del Estero",6893,"Argentina"],,
+["Tierra del Fuego",3322,"Argentina"],,
+["Tucumán",7872,"Argentina"],,
+["Burgenland",10348,"Austria"],,
+["Kärnten",24041,"Austria"],,
+["Niederösterreich",70405,"Austria"],,
+["Oberösterreich",76101,"Austria"],,
+["Salzburg",33248,"Austria"],,
+["Steiermark",56945,"Austria"],,
+["Tirol",40485,"Austria"],,
+["Vorarlberg",21205,"Austria"],,
+["Wien",112062,"Austria"],,
+["Absheron",38956,"Azerbaijan"],,
+["Aran",4424,"Azerbaijan"],,
+["Daglig-Shirvan",604,"Azerbaijan"],,
+["Ganja-Qazakh",2442,"Azerbaijan"],,
+["Kalbajar-Lachin",58,"Azerbaijan"],,
+["Lankaran",1072,"Azerbaijan"],,
+["Nakhchivan",2126,"Azerbaijan"],,
+["Quba-Khachmaz",1255,"Azerbaijan"],,
+["Shaki-Zaqatala",1106,"Azerbaijan"],,
+["Yukhari-Karabakh",375,"Azerbaijan"],,
+["Région de Bruxelles-Capitale",96997,"Belgium"],,
+["Vlaams Gewest",312567,"Belgium"],,
+["Région wallonne",123183,"Belgium"],,
+["Blagoevgrad",1551,"Bulgaria"],,
+["Burgas",2721,"Bulgaria"],,
+["Dobrich",855,"Bulgaria"],,
+["Gabrovo",767,"Bulgaria"],,
+["Grad Sofiya",25337,"Bulgaria"],,
+["Haskovo",1012,"Bulgaria"],,
+["Kardzhali",738,"Bulgaria"],,
+["Kyustendil",552,"Bulgaria"],,
+["Lovech",629,"Bulgaria"],,
+["Montana",604,"Bulgaria"],,
+["Pazardzhik",1251,"Bulgaria"],,
+["Pernik",555,"Bulgaria"],,
+["Pleven",1156,"Bulgaria"],,
+["Plovdiv",4769,"Bulgaria"],,
+["Razgrad",574,"Bulgaria"],,
+["Ruse",1369,"Bulgaria"],,
+["Shumen",866,"Bulgaria"],,
+["Silistra",413,"Bulgaria"],,
+["Sliven",744,"Bulgaria"],,
+["Smolyan",603,"Bulgaria"],,
+["Stara Zagora",2532,"Bulgaria"],,
+["Targovishte",576,"Bulgaria"],,
+["Varna",3799,"Bulgaria"],,
+["Veliko Tarnovo",1281,"Bulgaria"],,
+["Vidin",362,"Bulgaria"],,
+["Vratsa",1056,"Bulgaria"],,
+["Yambol",592,"Bulgaria"],,
+["New Providence",8524,"Bahamas"],,
+["Family Islands",1280,"Bahamas"],,
+["Grand Bahama",1604,"Bahamas"],,
+["Brčko",495,"Bosnia and Herzegovina"],,
+["Federacija Bosna i Hercegovina",13267,"Bosnia and Herzegovina"],,
+["Repuplika Srpska",6440,"Bosnia and Herzegovina"],,
+["Brest",6043,"Belarus"],,
+["Homyel'",6385,"Belarus"],,
+["Hrodna",5211,"Belarus"],,
+["Mahilyow",4257,"Belarus"],,
+["Minsk",27665,"Belarus"],,
+["Vitsyebsk",4752,"Belarus"],,
+["Chuquisaca",2055,"Bolivia"],,
+["Cochabamba",6175,"Bolivia"],,
+["Beni",1131,"Bolivia"],,
+["La Paz",11502,"Bolivia"],,
+["Oruro",2051,"Bolivia"],,
+["Pando",363,"Bolivia"],,
+["Potosi",2489,"Bolivia"],,
+["Santa Cruz",12096,"Bolivia"],,
+["Tarija",3033,"Bolivia"],,
+["Aisen Of General Carlos Ibanez Del Campo",1703,"Chile"],,
+["Antofagasta",24920,"Chile"],,
+["Araucania",7401,"Chile"],,
+["Arica y Parinacota",2029,"Chile"],,
+["Atacama",5686,"Chile"],,
+["Bio Bio",20840,"Chile"],,
+["Coquimbo",7790,"Chile"],,
+["Bernardo O Higgins",12456,"Chile"],,
+["Los Lagos",9780,"Chile"],,
+["Magallanes",3027,"Chile"],,
+["Maule",9603,"Chile"],,
+["Rms Metropolitan Region",117818,"Chile"],,
+["Tarapaca",6366,"Chile"],,
+["Valparaiso",22484,"Chile"],,
+["Tibet",24576,"China"],,
+["Amazonas",245,"Colombia"],,
+["Arauca",1726,"Colombia"],,
+["Bolívar",11696,"Colombia"],,
+["Boyacá",8747,"Colombia"],,
+["Caldas",5189,"Colombia"],,
+["Caquetá",1311,"Colombia"],,
+["Casanare",4993,"Colombia"],,
+["Cauca",5723,"Colombia"],,
+["Cesar",6339,"Colombia"],,
+["Chocó",1276,"Colombia"],,
+["Córdoba",5576,"Colombia"],,
+["Guainía",125,"Colombia"],,
+["Guaviare",253,"Colombia"],,
+["Huila",5290,"Colombia"],,
+["La Guajira",3398,"Colombia"],,
+["Magdalena",4323,"Colombia"],,
+["Meta",11665,"Colombia"],,
+["Nariño",4876,"Colombia"],,
+["Norte de Santander",4980,"Colombia"],,
+["Putumayo",1237,"Colombia"],,
+["Quindío",2613,"Colombia"],,
+["Risaralda",5220,"Colombia"],,
+["San Andrés y Providencia",500,"Colombia"],,
+["Sucre",2663,"Colombia"],,
+["Tolima",6830,"Colombia"],,
+["Vaupés",92,"Colombia"],,
+["Vichada",208,"Colombia"],,
+["South Bohemia Region",11093,"Czech Republic"],,
+["The South Moravian Region",23690,"Czech Republic"],,
+["The Karlovy Vary Region",3964,"Czech Republic"],,
+["The Vysocina Region",8703,"Czech Republic"],,
+["The Hradec Kralove Region",10401,"Czech Republic"],,
+["The Liberec Region",7174,"Czech Republic"],,
+["The Moravian-Silesian Region",20338,"Czech Republic"],,
+["The Olomouc Region",10415,"Czech Republic"],,
+["The Pardubice Region",8672,"Czech Republic"],,
+["The Plzen Region",10971,"Czech Republic"],,
+["Central Bohemia Region",26272,"Czech Republic"],,
+["The Usti Region",12480,"Czech Republic"],,
+["The Zlin Region",10492,"Czech Republic"],,
+["Bayern",712188,"Germany"],,
+["Hessen",329104,"Germany"],,
+["Niedersachsen",343282,"Germany"],,
+["Nordrhein-Westfalen",803173,"Germany"],,
+["Rheinland-Pfalz",163841,"Germany"],,
+["Sachsen-Anhalt",71770,"Germany"],,
+["Freistaat Sachsen",144328,"Germany"],,
+["Thüringen",70882,"Germany"],,
+["Hovedstaden",124005,"Denmark"],,
+["Midtjylland",64187,"Denmark"],,
+["Nordjylland",25947,"Denmark"],,
+["Sjælland",30196,"Denmark"],,
+["Syddanmark",57311,"Denmark"],,
+["Azuay",5414,"Ecuador"],,
+["Bolivar",583,"Ecuador"],,
+["Cañar",1032,"Ecuador"],,
+["Carchi",686,"Ecuador"],,
+["Chimborazo",1769,"Ecuador"],,
+["Cotopaxi",1820,"Ecuador"],,
+["El Oro",3664,"Ecuador"],,
+["Esmeraldas",2792,"Ecuador"],,
+["Galapagos",258,"Ecuador"],,
+["Guayas",28050,"Ecuador"],,
+["Imbabura",1854,"Ecuador"],,
+["Loja",1834,"Ecuador"],,
+["Los Rios",3575,"Ecuador"],,
+["Manabi",5829,"Ecuador"],,
+["Morona Santiago",474,"Ecuador"],,
+["Napo",456,"Ecuador"],,
+["Orellana",4396,"Ecuador"],,
+["Pastaza",731,"Ecuador"],,
+["Pichincha",27026,"Ecuador"],,
+["Santa Elena",1515,"Ecuador"],,
+["Santo Domingo de los Tsachilas",2098,"Ecuador"],,
+["Sucumbios",1900,"Ecuador"],,
+["Tungurahua",2799,"Ecuador"],,
+["Zamora Chinchipe",317,"Ecuador"],,
+["Ad Daqahliyah",15126,"Egypt"],,
+["Al Bahr al Ahmar",5084,"Egypt"],,
+["Al Buhayrah",12958,"Egypt"],,
+["Al Fayyum",7008,"Egypt"],,
+["Al Gharbiyah",7916,"Egypt"],,
+["Al Iskandariyah",23438,"Egypt"],,
+["Al Isma`iliyah",4156,"Egypt"],,
+["Al Jizah",35531,"Egypt"],,
+["Al Minufiyah",7255,"Egypt"],,
+["Al Minya",5872,"Egypt"],,
+["Al Qahirah",84387,"Egypt"],,
+["Al Qalyubiyah",15494,"Egypt"],,
+["Al Uqsur",2107,"Egypt"],,
+["Al Wadi al Jadid",788,"Egypt"],,
+["As Suways",5100,"Egypt"],,
+["Ash Sharqiyah",13896,"Egypt"],,
+["Aswan",3486,"Egypt"],,
+["Asyut",5458,"Egypt"],,
+["Bani Suwayf",3927,"Egypt"],,
+["Bur Sa`id",13549,"Egypt"],,
+["Dumyat",5050,"Egypt"],,
+["Janub Sina'",4432,"Egypt"],,
+["Kafr ash Shaykh",6865,"Egypt"],,
+["Matrouh",9008,"Egypt"],,
+["Qina",3655,"Egypt"],,
+["Shamal Sina'",4149,"Egypt"],,
+["Suhaj",4847,"Egypt"],,
+["Aragón",42586,"Spain"],,
+["Cantabria",15881,"Spain"],,
+["Castilla-la Mancha",47933,"Spain"],,
+["Castilla y León",66934,"Spain"],,
+["Cataluña",265090,"Spain"],,
+["Ceuta y Melilla",3791,"Spain"],,
+["Comunidad de Madrid",268801,"Spain"],,
+["Comunidad Foral de Navarra",23478,"Spain"],,
+["Extremadura",23146,"Spain"],,
+["Galicia",72123,"Spain"],,
+["Illes Balears",37835,"Spain"],,
+["Canarias",52796,"Spain"],,
+["La Rioja",9925,"Spain"],,
+["País Vasco",83391,"Spain"],,
+["Principado de Asturias",26603,"Spain"],,
+["Región de Murcia",36219,"Spain"],,
+["Harju",20464,"Estonia"],,
+["Hiiu",126,"Estonia"],,
+["Ida-Viru",1831,"Estonia"],,
+["Järva",421,"Estonia"],,
+["Jõgeva",308,"Estonia"],,
+["Lääne-Viru",790,"Estonia"],,
+["Lääne",239,"Estonia"],,
+["Pärnu",1308,"Estonia"],,
+["Põlva",229,"Estonia"],,
+["Rapla",456,"Estonia"],,
+["Saare",523,"Estonia"],,
+["Tartu",3316,"Estonia"],,
+["Valga",323,"Estonia"],,
+["Viljandi",729,"Estonia"],,
+["Võru",407,"Estonia"],,
+["Eastern Finland",18865,"Finland"],,
+["Lapland",6798,"Finland"],,
+["Oulu",16742,"Finland"],,
+["Southern Finland",116162,"Finland"],,
+["Western Finland",72933,"Finland"],,
+["Ajaria",1773,"Georgia"],,
+["Guria",293,"Georgia"],,
+["Imereti",1481,"Georgia"],,
+["Kakheti",886,"Georgia"],,
+["Kvemo Kartli",1308,"Georgia"],,
+["Mtskheta-Mtianeti",422,"Georgia"],,
+["Racha-Lechkhumi-Kvemo Svaneti",106,"Georgia"],,
+["Samegrelo-Zemo Svaneti",999,"Georgia"],,
+["Samtskhe-Javakheti",576,"Georgia"],,
+["Shida Kartli",688,"Georgia"],,
+["Aegean",9985,"Greece"],,
+["Epirus and Western Macedonia",8702,"Greece"],,
+["Macedonia and Thrace",35967,"Greece"],,
+["Thessaly and Central Greece",20028,"Greece"],,
+["Bács-Kiskun",6817,"Hungary"],,
+["Baranya",4091,"Hungary"],,
+["Békés",3275,"Hungary"],,
+["Borsod-Abaúj-Zemplén",7344,"Hungary"],,
+["Csongrád",4917,"Hungary"],,
+["Fejér",6940,"Hungary"],,
+["Győr-Moson-Sopron",8939,"Hungary"],,
+["Hajdú-Bihar",6290,"Hungary"],,
+["Heves",3789,"Hungary"],,
+["Jász-Nagykun-Szolnok",3967,"Hungary"],,
+["Komárom-Esztergom",5039,"Hungary"],,
+["Nógrád",1399,"Hungary"],,
+["Pest",17171,"Hungary"],,
+["Somogy",3267,"Hungary"],,
+["Szabolcs-Szatmár-Bereg",5417,"Hungary"],,
+["Tolna",2754,"Hungary"],,
+["Vas",3825,"Hungary"],,
+["Veszprém",4340,"Hungary"],,
+["Zala",3370,"Hungary"],,
+["Bangka Belitung",5357,"Indonesia"],,
+["Bengkulu",5096,"Indonesia"],,
+["Gorontalo",2908,"Indonesia"],,
+["Jakarta Raya",199018,"Indonesia"],,
+["Jawa Barat",150071,"Indonesia"],,
+["Jawa Tengah",96197,"Indonesia"],,
+["Jawa Timur",165790,"Indonesia"],,
+["Kalimantan Barat",14995,"Indonesia"],,
+["Kalimantan Selatan",12762,"Indonesia"],,
+["Kalimantan Tengah",10606,"Indonesia"],,
+["Kalimantan Timur",52941,"Indonesia"],,
+["Kepulauan Riau",18917,"Indonesia"],,
+["Maluku Utara",2806,"Indonesia"],,
+["Maluku",3262,"Indonesia"],,
+["Nusa Tenggara Barat",9366,"Indonesia"],,
+["Nusa Tenggara Timur",7544,"Indonesia"],,
+["Papua Barat",5963,"Indonesia"],,
+["Papua",13395,"Indonesia"],,
+["Sulawesi Barat",3277,"Indonesia"],,
+["Sulawesi Selatan",35647,"Indonesia"],,
+["Sulawesi Tengah",13129,"Indonesia"],,
+["Sulawesi Tenggara",9134,"Indonesia"],,
+["Sulawesi Utara",9198,"Indonesia"],,
+["Sumatera Barat",17384,"Indonesia"],,
+["Sumatera Selatan",32048,"Indonesia"],,
+["Sumatera Utara",56519,"Indonesia"],,
+["Yogyakarta",9970,"Indonesia"],,
+["Andaman Nicobar",1181,"India"],,
+["Chattisgarh",41898,"India"],,
+["Jammu & Kashmir",21063,"India"],,
+["Delhi",93420,"India"],,
+["Punjab",65928,"India"],,
+["Abruzzo",37087,"Italy"],,
+["Puglia",86726,"Italy"],,
+["Basilicata",14653,"Italy"],,
+["Calabria",37634,"Italy"],,
+["Campania",122721,"Italy"],,
+["Friuli-Venezia Giulia",43401,"Italy"],,
+["Lazio",224820,"Italy"],,
+["Liguria",55680,"Italy"],,
+["Lombardia",446393,"Italy"],,
+["Marche",47453,"Italy"],,
+["Molise",7264,"Italy"],,
+["Piemonte",154233,"Italy"],,
+["Sardegna",39465,"Italy"],,
+["Sicilia",100035,"Italy"],,
+["Toscana",132903,"Italy"],,
+["Trentino Alto Adige",52033,"Italy"],,
+["Umbria",26045,"Italy"],,
+["Valle D'aosta",5449,"Italy"],,
+["Aqmola",25522,"Kazakhstan"],,
+["Aqtöbe",7771,"Kazakhstan"],,
+["Atyrau",24369,"Kazakhstan"],,
+["East Kazakhstan",10516,"Kazakhstan"],,
+["Mangghystau",9629,"Kazakhstan"],,
+["North Kazakhstan",3612,"Kazakhstan"],,
+["Pavlodar",7915,"Kazakhstan"],,
+["Qaraghandy",14078,"Kazakhstan"],,
+["Qostanay",6406,"Kazakhstan"],,
+["Qyzylorda",4778,"Kazakhstan"],,
+["South Kazakhstan",11023,"Kazakhstan"],,
+["West Kazakhstan",7698,"Kazakhstan"],,
+["Zhambyl",4475,"Kazakhstan"],,
+["Batken",306,"Kyrgyzstan"],,
+["Biškek",3315,"Kyrgyzstan"],,
+["Chui",1208,"Kyrgyzstan"],,
+["Naryn",218,"Kyrgyzstan"],,
+["Osh",665,"Kyrgyzstan"],,
+["Talas",238,"Kyrgyzstan"],,
+["Chungcheongbuk-do",56603,"South Korea"],,
+["Chungcheongnam-do",90545,"South Korea"],,
+["Daegu",47642,"South Korea"],,
+["Daejeon",35507,"South Korea"],,
+["Gwangju",34060,"South Korea"],,
+["Gyeonggi-do",389883,"South Korea"],,
+["Gyeongsangbuk-do",88884,"South Korea"],,
+["Gyeongsangnam-do",93317,"South Korea"],,
+["Jeju-do",16522,"South Korea"],,
+["Jeollabuk-do",42388,"South Korea"],,
+["Jeollanam-do",60154,"South Korea"],,
+["Sejong",9701,"South Korea"],,
+["Ulsan",54005,"South Korea"],,
+["Central",9481,"Sri Lanka"],,
+["Eastern",4778,"Sri Lanka"],,
+["North Central",4606,"Sri Lanka"],,
+["North Western",9173,"Sri Lanka"],,
+["Northern",4015,"Sri Lanka"],,
+["Sabaragamuwa",6328,"Sri Lanka"],,
+["Southern",8343,"Sri Lanka"],,
+["Uva",4495,"Sri Lanka"],,
+["Western",32772,"Sri Lanka"],,
+["Béni Mellal-Khénifra",7152,"Morocco"],,
+["Drâa-Tafilalet",3147,"Morocco"],,
+["Fès-Meknès",10039,"Morocco"],,
+["Guelmim-Oued Noun",1794,"Morocco"],,
+["Marrakech-Safi",10217,"Morocco"],,
+["Oriental",6164,"Morocco"],,
+["Rabat-Salé-Kénitra",18338,"Morocco"],,
+["Souss-Massa",8078,"Morocco"],,
+["Tanger-Tétouan-Al Hoceima",13079,"Morocco"],,
+["Laâyoune-Saguia al Hamra",2101,"Morocco"],,
+["Ed Dakhla-Oued ed Dahab",1539,"Morocco"],,
+["Aguascalientes",15913,"Mexico"],,
+["Baja California Sur",11186,"Mexico"],,
+["Campeche",32454,"Mexico"],,
+["Chiapas",17212,"Mexico"],,
+["Coahuila De Zaragoza",44305,"Mexico"],,
+["Colima",7638,"Mexico"],,
+["Ciudad De Mexico",192156,"Mexico"],,
+["Durango",14314,"Mexico"],,
+["Guerrero",16363,"Mexico"],,
+["Hidalgo",19684,"Mexico"],,
+["Mexico",105376,"Mexico"],,
+["Michoacán De Ocampo",29586,"Mexico"],,
+["Morelos",13161,"Mexico"],,
+["Nayarit",8383,"Mexico"],,
+["Nuevo Leon",95890,"Mexico"],,
+["Oaxaca",18077,"Mexico"],,
+["Queretaro",27694,"Mexico"],,
+["San Luis Potosi",27094,"Mexico"],,
+["Sinaloa",26838,"Mexico"],,
+["Tabasco",27051,"Mexico"],,
+["Tamaulipas",36889,"Mexico"],,
+["Tlaxcala",7095,"Mexico"],,
+["Yucatan",18067,"Mexico"],,
+["Zacatecas",10705,"Mexico"],,
+["East",1018,"Macedonia"],,
+["Northeast",601,"Macedonia"],,
+["Pelagonia",1416,"Macedonia"],,
+["Polog",926,"Macedonia"],,
+["Skopje",5467,"Macedonia"],,
+["Southeast",1161,"Macedonia"],,
+["Southwest",1019,"Macedonia"],,
+["Vardar",999,"Macedonia"],,
+["Arhangay",227,"Mongolia"],,
+["Bayan-Ölgiy",160,"Mongolia"],,
+["Bayankhongor",170,"Mongolia"],,
+["Bulgan",139,"Mongolia"],,
+["Darkhan-Uul",197,"Mongolia"],,
+["Dornod",357,"Mongolia"],,
+["Dornogovi",173,"Mongolia"],,
+["Dundgovi",140,"Mongolia"],,
+["Zavkhan",160,"Mongolia"],,
+["Govi-Altai",125,"Mongolia"],,
+["Govisumber",42,"Mongolia"],,
+["Khentii",179,"Mongolia"],,
+["Khovd",200,"Mongolia"],,
+["Khuvsgul",265,"Mongolia"],,
+["Ömnögovi",316,"Mongolia"],,
+["Orkhon",790,"Mongolia"],,
+["Övörhangay",244,"Mongolia"],,
+["Selenge",278,"Mongolia"],,
+["Sukhbaatar",193,"Mongolia"],,
+["Tuv",235,"Mongolia"],,
+["Uvs",149,"Mongolia"],,
+["Cabo Delgado",657,"Mozambique"],,
+["Gaza",732,"Mozambique"],,
+["Inhambane",1285,"Mozambique"],,
+["Manica",490,"Mozambique"],,
+["Cidade de Maputo",2791,"Mozambique"],,
+["Nampula",2071,"Mozambique"],,
+["Niassa",418,"Mozambique"],,
+["Sofala",1506,"Mozambique"],,
+["Tete",1341,"Mozambique"],,
+["Zambezia",1336,"Mozambique"],,
+["Kedah",12182,"Malaysia"],,
+["Kelantan",6628,"Malaysia"],,
+["Labuan",1983,"Malaysia"],,
+["Melaka",11334,"Malaysia"],,
+["Negeri Sembilan",12490,"Malaysia"],,
+["Pahang",15198,"Malaysia"],,
+["Perak",19761,"Malaysia"],,
+["Perlis",1600,"Malaysia"],,
+["Pulau Pinang",24615,"Malaysia"],,
+["Sabah",22270,"Malaysia"],,
+["Sarawak",35560,"Malaysia"],,
+["Trengganu",9362,"Malaysia"],,
+["Drenthe",17576,"Netherlands"],,
+["Friesland",23203,"Netherlands"],,
+["Gelderland",91519,"Netherlands"],,
+["Groningen",27615,"Netherlands"],,
+["Limburg",51322,"Netherlands"],,
+["Noord-Brabant",135301,"Netherlands"],,
+["Noord-Holland",198954,"Netherlands"],,
+["Overijssel",50952,"Netherlands"],,
+["Zeeland",16109,"Netherlands"],,
+["Zuid-Holland",191108,"Netherlands"],,
+["Koshi",5321,"Nepal"],,
+["Madhes",4472,"Nepal"],,
+["Bagmati",12991,"Nepal"],,
+["Gandaki",3027,"Nepal"],,
+["Lumbini",4795,"Nepal"],,
+["Karnali",1349,"Nepal"],,
+["Sudurpaschim",2314,"Nepal"],,
+["Bay of Plenty",11736,"New Zealand"],,
+["Canterbury",25146,"New Zealand"],,
+["Gisborne",1466,"New Zealand"],,
+["Hawke's Bay",5720,"New Zealand"],,
+["Manawatu-Wanganui",7778,"New Zealand"],,
+["Marlborough",2147,"New Zealand"],,
+["Tasman/nelson",3732,"New Zealand"],,
+["Northland",5180,"New Zealand"],,
+["Otago",8932,"New Zealand"],,
+["Southland",4269,"New Zealand"],,
+["Taranaki",5967,"New Zealand"],,
+["Waikato",17513,"New Zealand"],,
+["Wellington",25085,"New Zealand"],,
+["West Coast",1228,"New Zealand"],,
+["Bocas Del Toro",777,"Panama"],,
+["Chiriquí",3525,"Panama"],,
+["Coclé",1842,"Panama"],,
+["Colón",11928,"Panama"],,
+["Darién",217,"Panama"],,
+["Herrera",815,"Panama"],,
+["Los Santos",681,"Panama"],,
+["Panamá Oeste",4074,"Panama"],,
+["Panamá",41615,"Panama"],,
+["Veraguas",1509,"Panama"],,
+["Amazonas",1437,"Peru"],,
+["Ancash",7296,"Peru"],,
+["Apurimac",2906,"Peru"],,
+["Arequipa",12052,"Peru"],,
+["Ayacucho",2716,"Peru"],,
+["Cajamarca",5109,"Peru"],,
+["Cusco",7546,"Peru"],,
+["Huancavelica",1680,"Peru"],,
+["Huanuco",2773,"Peru"],,
+["Ica",8224,"Peru"],,
+["Junin",5999,"Peru"],,
+["La Libertad",9940,"Peru"],,
+["Lambayeque",5178,"Peru"],,
+["Loreto",3464,"Peru"],,
+["Madre de Dios",966,"Peru"],,
+["Moquequa",2524,"Peru"],,
+["Pasco",1956,"Peru"],,
+["Piura",9738,"Peru"],,
+["Puno",4755,"Peru"],,
+["San Martin",2572,"Peru"],,
+["Tacna",2851,"Peru"],,
+["Tumbes",1210,"Peru"],,
+["Ucayali",2006,"Peru"],,
+["Western Visayas",17748,"Philippines"],,
+["Bicol Region",10829,"Philippines"],,
+["Zamboanga Peninsula",7706,"Philippines"],,
+["Central Visayas",24534,"Philippines"],,
+["Eastern Visayas",8796,"Philippines"],,
+["Northern Mindanao",17093,"Philippines"],,
+["Davao Region",17814,"Philippines"],,
+["Soccsksargen",10297,"Philippines"],,
+["Caraga",5849,"Philippines"],,
+["ARMM",4355,"Philippines"],,
+["Cordillera Administrative Region",6219,"Philippines"],,
+["National Capital Region",121533,"Philippines"],,
+["Ilocos Regions",12170,"Philippines"],,
+["Cagayan Valley",7711,"Philippines"],,
+["Central Luzon",42186,"Philippines"],,
+["Calabarzon",55335,"Philippines"],,
+["Mimaropa",7252,"Philippines"],,
+["Dolnośląskie",49280,"Poland"],,
+["Kujawsko-Pomorskie",25644,"Poland"],,
+["Łódzkie",35967,"Poland"],,
+["Lubelskie",22414,"Poland"],,
+["Lubuskie",12782,"Poland"],,
+["Małopolskie",48375,"Poland"],,
+["Mazowieckie",136130,"Poland"],,
+["Opolskie",12060,"Poland"],,
+["Podkarpackie",23188,"Poland"],,
+["Podlaskie",13202,"Poland"],,
+["Pomorskie",35336,"Poland"],,
+["Śląskie",71839,"Poland"],,
+["Świętokrzyskie",13751,"Poland"],,
+["Warmińsko-Mazurskie",15165,"Poland"],,
+["Wielkopolskie",58854,"Poland"],,
+["Zachodniopomorskie",21903,"Poland"],,
+["Região de Aveiro",8317,"Portugal"],,
+["R. A. dos Açores",5003,"Portugal"],,
+["Baixo Alentejo",2603,"Portugal"],,
+["Cávado",7902,"Portugal"],,
+["Terras de Trás-os-Montes",1917,"Portugal"],,
+["Beira Baixa",1660,"Portugal"],,
+["Região de Coimbra",9344,"Portugal"],,
+["Alentejo Central",3213,"Portugal"],,
+["Algarve",11370,"Portugal"],,
+["Beiras e Serra da Estrela",3409,"Portugal"],,
+["Região de Leiria",6498,"Portugal"],,
+["Área Metropolitana de Lisboa",85934,"Portugal"],,
+["R. A. da Madeira",5675,"Portugal"],,
+["Alto Alentejo",1904,"Portugal"],,
+["Área Metropolitana do Porto",38412,"Portugal"],,
+["Lezíria do Tejo",4644,"Portugal"],,
+["Alentejo Litoral",2645,"Portugal"],,
+["Alto Minho",4175,"Portugal"],,
+["Alto Tâmega",1271,"Portugal"],,
+["Viseu Dão Lafões",4403,"Portugal"],,
+["Médio Tejo",4359,"Portugal"],,
+["Ave",8032,"Portugal"],,
+["Tâmega e Sousa",5902,"Portugal"],,
+["Douro",3225,"Portugal"],,
+["Oeste",6786,"Portugal"],,
+["Alto Paraná",2013,"Paraguay"],,
+["Asunción",1853,"Paraguay"],,
+["Caaguazú",923,"Paraguay"],,
+["Caazapá",350,"Paraguay"],,
+["Central",5275,"Paraguay"],,
+["Itapúa",1256,"Paraguay"],,
+["San Pedro",661,"Paraguay"],,
+["Adygea",2043,"Russia"],,
+["Altai Krai",9649,"Russia"],,
+["Amur",6372,"Russia"],,
+["Arhangelsk",13750,"Russia"],,
+["Astrakhan",9304,"Russia"],,
+["Belgorod",14767,"Russia"],,
+["Bryansk",6143,"Russia"],,
+["Buryatia",4415,"Russia"],,
+["Chechen",3732,"Russia"],,
+["Chelyabinsk",23875,"Russia"],,
+["Chukotka",1466,"Russia"],,
+["Chuvash",5248,"Russia"],,
+["Dagestan",11099,"Russia"],,
+["Ingushetia",1131,"Russia"],,
+["Irkutsk",23876,"Russia"],,
+["Ivanovo",3858,"Russia"],,
+["Kabardino-Balkar",2642,"Russia"],,
+["Kaliningrad",8028,"Russia"],,
+["Kalmykia",1374,"Russia"],,
+["Kaluga",8420,"Russia"],,
+["Kamchatka",4320,"Russia"],,
+["Karachay-Cherkess",1421,"Russia"],,
+["Karelia",5023,"Russia"],,
+["Kemerovo",17153,"Russia"],,
+["Khabarovsk",12403,"Russia"],,
+["Khakassia",3958,"Russia"],,
+["Kirov",5719,"Russia"],,
+["Komi",11132,"Russia"],,
+["Kostroma",3135,"Russia"],,
+["Krasnodar",39696,"Russia"],,
+["Krasnoyarsk",41587,"Russia"],,
+["Kurgan",3606,"Russia"],,
+["Kursk",7672,"Russia"],,
+["Leningrad",18915,"Russia"],,
+["Lipetsk",8811,"Russia"],,
+["Magadan",3299,"Russia"],,
+["Mari El",3152,"Russia"],,
+["Mordovia",4068,"Russia"],,
+["Moscow city",303888,"Russia"],,
+["Moscow region",79219,"Russia"],,
+["Murmansk",9529,"Russia"],,
+["Nizhny Novgorod",25054,"Russia"],,
+["North Ossetia-Alania",2676,"Russia"],,
+["Novgorod",4225,"Russia"],,
+["Novosibirsk",21768,"Russia"],,
+["Omsk",11940,"Russia"],,
+["Oryol",4104,"Russia"],,
+["Orenburg",17102,"Russia"],,
+["Penza",6935,"Russia"],,
+["Primorsky",16478,"Russia"],,
+["Pskov",3045,"Russia"],,
+["Rostov",25298,"Russia"],,
+["Ryazan",6736,"Russia"],,
+["Sakha",18850,"Russia"],,
+["Sakhalin",18133,"Russia"],,
+["Samara",26073,"Russia"],,
+["Saratov",12539,"Russia"],,
+["Smolensk",5376,"Russia"],,
+["Stavropol",12775,"Russia"],,
+["Sverdlovsk",39074,"Russia"],,
+["Tambov",5473,"Russia"],,
+["Tomsk",9620,"Russia"],,
+["Tula",10529,"Russia"],,
+["Tyva",1224,"Russia"],,
+["Tver",7494,"Russia"],,
+["Tyumen",137773,"Russia"],,
+["Udmurt",11143,"Russia"],,
+["Ulyanovsk",6493,"Russia"],,
+["Vladimir",8302,"Russia"],,
+["Volgograd",14851,"Russia"],,
+["Vologda",9734,"Russia"],,
+["Voronezh",15487,"Russia"],,
+["Yaroslavl",9374,"Russia"],,
+["Jewish Autonomous Region",874,"Russia"],,
+["Transbaikal",5631,"Russia"],,
+["Banská Bystrica",9151,"Slovakia"],,
+["Bratislava",29529,"Slovakia"],,
+["Košice",12321,"Slovakia"],,
+["Nitra",11127,"Slovakia"],,
+["Prešov",9799,"Slovakia"],,
+["Trenčín",9078,"Slovakia"],,
+["Trnava",12135,"Slovakia"],,
+["Žilina",11931,"Slovakia"],,
+["Gorenjska",4787,"Slovenia"],,
+["Goriška",2735,"Slovenia"],,
+["Jugovzhodna Slovenija",3740,"Slovenia"],,
+["Koroška",1479,"Slovenia"],,
+["Primorsko-notranjska",955,"Slovenia"],,
+["Obalno-kraška",2962,"Slovenia"],,
+["Osrednjeslovenska",20161,"Slovenia"],,
+["Podravska",6868,"Slovenia"],,
+["Pomurska",2011,"Slovenia"],,
+["Savinjska",6037,"Slovenia"],,
+["Posavska",1651,"Slovenia"],,
+["Zasavska",785,"Slovenia"],,
+["Amnat Chareon",653,"Thailand"],,
+["Bueng Kan",796,"Thailand"],,
+["Buri Ram",2878,"Thailand"],,
+["Chaiyaphum",2116,"Thailand"],,
+["Kalasin",1888,"Thailand"],,
+["Khon Kaen",6893,"Thailand"],,
+["Loei",1771,"Thailand"],,
+["Maha Sarakham",1907,"Thailand"],,
+["Mukdahan",880,"Thailand"],,
+["Nakhon Phanom",1451,"Thailand"],,
+["Nakhon Ratchasima",9791,"Thailand"],,
+["Nongbua Lamphu",966,"Thailand"],,
+["Nong Khai",1337,"Thailand"],,
+["Roi Et",2517,"Thailand"],,
+["Sakon Nakhon",1956,"Thailand"],,
+["Si Sa Ket",2343,"Thailand"],,
+["Surin",2609,"Thailand"],,
+["Ubon Ratchathani",4061,"Thailand"],,
+["Udon Thani",3668,"Thailand"],,
+["Yasothon",926,"Thailand"],,
+["Adana",14773,"Türkiye"],,
+["Adiyaman",2574,"Türkiye"],,
+["Afyon",4788,"Türkiye"],,
+["Agri",1669,"Türkiye"],,
+["Aksaray",2778,"Türkiye"],,
+["Amasya",2214,"Türkiye"],,
+["Ankara",76725,"Türkiye"],,
+["Antalya",26836,"Türkiye"],,
+["Ardahan",650,"Türkiye"],,
+["Artvin",1614,"Türkiye"],,
+["Aydin",7594,"Türkiye"],,
+["Balikesir",9887,"Türkiye"],,
+["Bart?n",1160,"Türkiye"],,
+["Batman",2608,"Türkiye"],,
+["Bayburt",531,"Türkiye"],,
+["Bilecik",2235,"Türkiye"],,
+["Bingöl",1410,"Türkiye"],,
+["Bitlis",1385,"Türkiye"],,
+["Bolu",3107,"Türkiye"],,
+["Burdur",2080,"Türkiye"],,
+["Bursa",32007,"Türkiye"],,
+["Çanakkale",5302,"Türkiye"],,
+["Çankiri",1395,"Türkiye"],,
+["Çorum",3079,"Türkiye"],,
+["Denizli",8630,"Türkiye"],,
+["Diyarbakir",7538,"Türkiye"],,
+["Düzce",3070,"Türkiye"],,
+["Edirne",3321,"Türkiye"],,
+["Elaz??",3473,"Türkiye"],,
+["Erzincan",2030,"Türkiye"],,
+["Erzurum",4165,"Türkiye"],,
+["Eskisehir",8834,"Türkiye"],,
+["Gaziantep",13719,"Türkiye"],,
+["Giresun",2586,"Türkiye"],,
+["Gümüshane",870,"Türkiye"],,
+["Hakkari",1584,"Türkiye"],,
+["Hatay",9203,"Türkiye"],,
+["I?d?r",1118,"Türkiye"],,
+["Isparta",3322,"Türkiye"],,
+["Istanbul",231484,"Türkiye"],,
+["Izmir",46804,"Türkiye"],,
+["K. Maras",7023,"Türkiye"],,
+["Karabük",1746,"Türkiye"],,
+["Karaman",2202,"Türkiye"],,
+["Kars",1394,"Türkiye"],,
+["Kastamonu",2683,"Türkiye"],,
+["Kayseri",11217,"Türkiye"],,
+["Kilis",754,"Türkiye"],,
+["Kinkkale",2035,"Türkiye"],,
+["Kirklareli",3710,"Türkiye"],,
+["Kirsehir",1521,"Türkiye"],,
+["Kocaeli",27672,"Türkiye"],,
+["Konya",16458,"Türkiye"],,
+["Kütahya",4336,"Türkiye"],,
+["Malatya",4376,"Türkiye"],,
+["Manisa",12940,"Türkiye"],,
+["Mardin",4394,"Türkiye"],,
+["Mersin",13987,"Türkiye"],,
+["Mugla",9825,"Türkiye"],,
+["Mus",1723,"Türkiye"],,
+["Nevsehir",2010,"Türkiye"],,
+["Nigde",2398,"Türkiye"],,
+["Ordu",4241,"Türkiye"],,
+["Osmaniye",2915,"Türkiye"],,
+["Rize",2542,"Türkiye"],,
+["Sakarya",8933,"Türkiye"],,
+["Samsun",8420,"Türkiye"],,
+["Sanliurfa",6749,"Türkiye"],,
+["Siirt",1630,"Türkiye"],,
+["Sinop",1269,"Türkiye"],,
+["Sirnak",2599,"Türkiye"],,
+["Sivas",3999,"Türkiye"],,
+["Tekirdag",13155,"Türkiye"],,
+["Tokat",3013,"Türkiye"],,
+["Trabzon",5487,"Türkiye"],,
+["Tunceli",759,"Türkiye"],,
+["Usak",2936,"Türkiye"],,
+["Van",3801,"Türkiye"],,
+["Yalova",2695,"Türkiye"],,
+["Yozgat",2218,"Türkiye"],,
+["Zinguldak",3933,"Türkiye"],,
+["Cherkasy",4005,"Ukraine"],,
+["Chernihiv",3018,"Ukraine"],,
+["Chernivtsi",1612,"Ukraine"],,
+["Donetsk",7934,"Ukraine"],,
+["Ivano-Frankivsk",3355,"Ukraine"],,
+["Kharkiv",9583,"Ukraine"],,
+["Kherson",2397,"Ukraine"],,
+["Khmelnytskiy",3213,"Ukraine"],,
+["Kiev",8463,"Ukraine"],,
+["Kirovohrad",2828,"Ukraine"],,
+["Lviv",8297,"Ukraine"],,
+["Luhansk",1559,"Ukraine"],,
+["Mykolayiv",3577,"Ukraine"],,
+["Odesa",7630,"Ukraine"],,
+["Poltava",7250,"Ukraine"],,
+["Rivne",2607,"Ukraine"],,
+["Sumy",2935,"Ukraine"],,
+["Ternopil",2211,"Ukraine"],,
+["Transcarpathia",2373,"Ukraine"],,
+["Vinnytsya",4997,"Ukraine"],,
+["Volyn",2927,"Ukraine"],,
+["Zaporizhzhya",6006,"Ukraine"],,
+["Zhytomyr",3300,"Ukraine"],,
+["Alabama",228143,"USA"],,
+["Alaska",54386,"USA"],,
+["Arizona",370119,"USA"],,
+["Arkansas",130954,"USA"],,
+["California",3132801,"USA"],,
+["Colorado",392986,"USA"],,
+["Connecticut",287822,"USA"],,
+["Delaware",77082,"USA"],,
+["District of Columbia",143389,"USA"],,
+["Florida",1106500,"USA"],,
+["Georgia",625714,"USA"],,
+["Hawaii",95744,"USA"],,
+["Idaho",83666,"USA"],,
+["Illinois",885583,"USA"],,
+["Indiana",379684,"USA"],,
+["Iowa",194658,"USA"],,
+["Kansas",176493,"USA"],,
+["Kentucky",215399,"USA"],,
+["Louisiana",256919,"USA"],,
+["Maine",67717,"USA"],,
+["Maryland",426747,"USA"],,
+["Massachusetts",596593,"USA"],,
+["Michigan",536888,"USA"],,
+["Minnesota",383777,"USA"],,
+["Mississippi",115971,"USA"],,
+["Missouri",328401,"USA"],,
+["Montana",52935,"USA"],,
+["Nebraska",130012,"USA"],,
+["Nevada",178199,"USA"],,
+["New Hampshire",87634,"USA"],,
+["New Jersey",634784,"USA"],,
+["New Mexico",105143,"USA"],,
+["New York",1772261,"USA"],,
+["North Carolina",591601,"USA"],,
+["North Dakota",57181,"USA"],,
+["Ohio",695362,"USA"],,
+["Oklahoma",202036,"USA"],,
+["Oregon",253623,"USA"],,
+["Pennsylvania",808738,"USA"],,
+["Rhode Island",61884,"USA"],,
+["South Carolina",247544,"USA"],,
+["South Dakota",54941,"USA"],,
+["Tennessee",376582,"USA"],,
+["Texas",1843803,"USA"],,
+["Utah",192519,"USA"],,
+["Vermont",34013,"USA"],,
+["Virginia",556905,"USA"],,
+["Washington",612996,"USA"],,
+["West Virginia",78864,"USA"],,
+["Wisconsin",349417,"USA"],,
+["Wyoming",40420,"USA"],,
+["Andijon",3825,"Uzbekistan"],,
+["Bukhoro",3185,"Uzbekistan"],,
+["Ferghana",3705,"Uzbekistan"],,
+["Jizzakh",1827,"Uzbekistan"],,
+["Karakalpakstan",2231,"Uzbekistan"],,
+["Kashkadarya",3666,"Uzbekistan"],,
+["Khorezm",2177,"Uzbekistan"],,
+["Namangan",2707,"Uzbekistan"],,
+["Navoi",4149,"Uzbekistan"],,
+["Samarkand",4419,"Uzbekistan"],,
+["Sirdaryo",1352,"Uzbekistan"],,
+["Surkhandarya",2534,"Uzbekistan"],,
+["Tashkent City",9746,"Uzbekistan"],
+];
+
+const avgGdp = states.reduce((s,[,g]) => s + g*1e6, 0) / states.length;
+
+function fmtUSD(n){
+  if (Math.abs(n) >= 1e12) return '$' + (n/1e12).toFixed(3) + 'T';
+  if (Math.abs(n) >= 1e9) return '$' + (n/1e9).toFixed(2) + 'B';
+  if (Math.abs(n) >= 1e6) return '$' + (n/1e6).toFixed(2) + 'M';
+  return '$' + n.toLocaleString(undefined,{maximumFractionDigits:2});
+}
+function fmtPct(n){ return (n>=0?'+':'') + n.toLocaleString(undefined,{maximumFractionDigits:0}) + '%'; }
+
+function showTab(tab){
+  document.getElementById('panelStock').classList.toggle('active', tab==='stock');
+  document.getElementById('panelFut').classList.toggle('active', tab==='fut');
+  document.getElementById('btnStock').classList.toggle('active', tab==='stock');
+  document.getElementById('btnFut').classList.toggle('active', tab==='fut');
+}
+
+const els = {};
+['cpi','mult','capTotal','entry','sharesOutstanding','fedPct','statePct','futSeed','futLeverage','myStockInvestment','myFutInvestment','dailyLimit'].forEach(id => els[id] = document.getElementById(id));
+
+function resetShares(){
+  const capTotal = (parseFloat(els.capTotal.value)||0) * 1e6;
+  const entry = parseFloat(els.entry.value);
+  const sharesPurchased = capTotal / entry;
+  els.sharesOutstanding.value = (sharesPurchased/1e9).toFixed(4);
+  recalcStock();
+}
+
+function recalcStock(){
+  const capTotal = (parseFloat(els.capTotal.value)||0) * 1e6;
+  const entry = parseFloat(els.entry.value);
+  const sharesOutstanding = (parseFloat(els.sharesOutstanding.value)||0) * 1e9;
+  const sharesPurchased = capTotal / entry;
+  const ownershipFrac = sharesOutstanding > 0 ? sharesPurchased / sharesOutstanding : 0;
+
+  const fedPct = (parseFloat(els.fedPct.value)||0) / 100;
+  const statePct = (parseFloat(els.statePct.value)||0) / 100;
+  const publicPct = Math.max(0, 1 - fedPct - statePct);
+
+  let totStockCap = 0, totStockValue = 0, totFedEquity = 0, totStateEquity = 0;
+
+  const rows = states.map(([name, gdpM, country]) => {
+    const gdp = gdpM * 1e6;
+    const marketCap = gdp;
+
+    // shares-based model
+    const priceTarget = sharesOutstanding > 0 ? marketCap / sharesOutstanding : 0;
+    const valueAtTarget = sharesPurchased * priceTarget;
+    const stockGainPct = (valueAtTarget/capTotal - 1) * 100;
+
+    // percentage-ownership model
+    const fedEquity = marketCap * fedPct;
+    const stateEquity = marketCap * statePct;
+
+    totStockCap += marketCap;
+    totStockValue += valueAtTarget;
+    totFedEquity += fedEquity;
+    totStateEquity += stateEquity;
+
+    return {name, country, gdp, marketCap, priceTarget, stockGainPct, fedEquity, stateEquity};
+  });
+
+  rows.sort((a,b) => b.gdp - a.gdp);
+
+  document.getElementById('tbodyStock').innerHTML = rows.map((r,i) => `
+    <tr>
+      <td class="rank">${i+1}</td>
+      <td>${r.name} <span style="color:var(--muted); font-size:10px;">(${r.country})</span></td>
+      <td class="colstock">${fmtUSD(r.marketCap)}</td>
+      <td class="colstock">${(sharesOutstanding/1e9).toFixed(2)}B</td>
+      <td class="colstock">$${r.priceTarget.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
+      <td class="colgain">${fmtPct(r.stockGainPct)}</td>
+      <td class="colgain">${fmtUSD(r.fedEquity)}</td>
+      <td class="colgain">${fmtUSD(r.stateEquity)}</td>
+    </tr>
+  `).join('');
+
+  const totCapAll = capTotal * states.length;
+  const totalStockGain = (totStockValue - totCapAll)/totCapAll*100;
+  const publicFloatVal = totStockCap * publicPct;
+
+  document.getElementById('totStockCap').textContent = fmtUSD(totStockCap);
+  document.getElementById('totStockCapital').textContent = fmtUSD(totCapAll);
+  document.getElementById('ownershipPct').textContent = (ownershipFrac*100).toLocaleString(undefined,{maximumFractionDigits:2}) + '%';
+  document.getElementById('totStockGain').textContent = fmtPct(totalStockGain);
+
+  const sumStockGainPct = rows.reduce((s, r) => s + (isNaN(r.stockGainPct) ? 0 : r.stockGainPct), 0);
+  document.getElementById('sumStockGainPct').textContent = fmtPct(sumStockGainPct);
+  document.getElementById('totFedEquity').textContent = fmtUSD(totFedEquity);
+  document.getElementById('totStateEquity').textContent = fmtUSD(totStateEquity);
+  document.getElementById('publicFloatPct').textContent = (publicPct*100).toFixed(0) + '%';
+  document.getElementById('publicFloatVal').textContent = fmtUSD(publicFloatVal);
+
+  // My portfolio: total investment split evenly across all entities, buying shares at entry price
+  const myTotalInvestment = parseFloat(els.myStockInvestment.value) || 0;
+  const myPerEntity = myTotalInvestment / states.length;
+  let myTotalValue = 0;
+  rows.forEach(r => {
+    const mySharesBought = entry > 0 ? myPerEntity / entry : 0;
+    const myValueThisEntity = mySharesBought * r.priceTarget;
+    myTotalValue += myValueThisEntity;
+  });
+  const myGainPct = myTotalInvestment > 0 ? ((myTotalValue - myTotalInvestment)/myTotalInvestment)*100 : NaN;
+
+  document.getElementById('myStockInvested').textContent = fmtUSD(myTotalInvestment);
+  document.getElementById('myStockPerEntity').textContent = `${fmtUSD(myPerEntity)} per entity`;
+  document.getElementById('myStockValue').textContent = fmtUSD(myTotalValue);
+  document.getElementById('myStockGain').textContent = isNaN(myGainPct) ? 'undefined' : fmtPct(myGainPct);
+}
+
+function recalcFutures(){
+  const cpi = parseFloat(els.cpi.value) || 0;
+  const mult = parseFloat(els.mult.value) || 2000;
+  const seed = parseFloat(els.futSeed.value);
+  const leverage = parseFloat(els.futLeverage.value) || 1;
+  const dailyLimitInput = (parseFloat(els.dailyLimit.value) || 10) / 100;
+  const wGdp = 0.30, wOther = 0.70;
+  const haircut = 0.05 * Math.max(0, cpi - 2.0);
+  const inflationFactor = 1 - haircut;
+
+  let totFutNotional = 0, totSeedDollars = 0;
+  let minEoi = Infinity, maxEoi = -Infinity;
+
+  const rows = states.map(([name, gdpM, country]) => {
+    const gdp = gdpM * 1e6;
+    const gdpIdx = (gdp/avgGdp)*100;
+    const rawEoi = wGdp*gdpIdx + wOther*100;
+    const eoi = rawEoi * inflationFactor;
+    const priceTarget = eoi * mult; // in dollars
+    const gainPct = seed > 0 ? ((priceTarget - seed)/seed)*100 : NaN;
+    const gainLevPct = gainPct * leverage;
+
+    // Liquidity tier: bigger economies assumed to trade a smaller GDP fraction per day
+    // (thinner relative float), which caps their EFFECTIVE daily limit below the stated one.
+    // This is a modeling assumption, not observed data -- no SGA has ever traded.
+    let liquidityTierFactor;
+    if (gdp >= 1e12) liquidityTierFactor = 0.6;       // mega economies (>$1T): slower, deeper market assumed
+    else if (gdp >= 200e9) liquidityTierFactor = 0.8; // large ($200B-$1T)
+    else if (gdp >= 50e9) liquidityTierFactor = 1.0;  // mid ($50B-$200B): baseline
+    else liquidityTierFactor = 1.3;                   // small (<$50B): assumed thinner market, moves faster % per day but with much wider risk of gaps/failure to fill
+
+    const effectiveDailyLimit = dailyLimitInput * liquidityTierFactor;
+    const daysToTarget = (seed > 0 && priceTarget > seed && effectiveDailyLimit > 0)
+      ? Math.log(priceTarget/seed) / Math.log(1+effectiveDailyLimit)
+      : NaN;
+
+    totFutNotional += priceTarget;
+    totSeedDollars += seed;
+    minEoi = Math.min(minEoi, eoi);
+    maxEoi = Math.max(maxEoi, eoi);
+    return {name, country, gdp, eoi, priceTarget, gainPct, gainLevPct, daysToTarget, liquidityTierFactor};
+  });
+
+  rows.sort((a,b) => b.gdp - a.gdp);
+
+  document.getElementById('tbodyFut').innerHTML = rows.map((r,i) => `
+    <tr>
+      <td class="rank">${i+1}</td>
+      <td>${r.name} <span style="color:var(--muted); font-size:10px;">(${r.country})</span></td>
+      <td class="colfut">$${seed.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
+      <td class="colfut">${r.eoi.toFixed(1)}</td>
+      <td class="colfut">$${r.priceTarget.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
+      <td class="colgain">${isNaN(r.gainPct) ? 'undefined (÷0)' : fmtPct(r.gainPct)}</td>
+      <td class="colgain">${isNaN(r.gainLevPct) ? 'undefined (÷0)' : fmtPct(r.gainLevPct)}</td>
+      <td class="colfut">${isNaN(r.daysToTarget) ? '—' : r.daysToTarget.toFixed(1) + ' sessions'}</td>
+    </tr>
+  `).join('');
+
+  const totalGainPct = totSeedDollars > 0 ? ((totFutNotional - totSeedDollars*states.length)/(totSeedDollars*states.length))*100 : NaN;
+  const totalGainLevPct = totalGainPct * leverage;
+
+  document.getElementById('totFutNotional').textContent = fmtUSD(totFutNotional);
+  document.getElementById('eoiRange').textContent = `${minEoi.toFixed(1)} - ${maxEoi.toFixed(1)}`;
+  document.getElementById('inflationOut').textContent = inflationFactor.toFixed(4);
+  document.getElementById('totFutGain').textContent =
+    (isNaN(totalGainPct) ? 'undefined' : fmtPct(totalGainPct)) + ' / ' +
+    (isNaN(totalGainLevPct) ? 'undefined' : fmtPct(totalGainLevPct));
+
+  const sumFutGainPct = rows.reduce((s, r) => s + (isNaN(r.gainPct) ? 0 : r.gainPct), 0);
+  const sumFutGainLevPct = rows.reduce((s, r) => s + (isNaN(r.gainLevPct) ? 0 : r.gainLevPct), 0);
+  document.getElementById('sumFutGainPct').textContent = fmtPct(sumFutGainPct);
+  document.getElementById('sumFutGainLevPct').textContent = fmtPct(sumFutGainLevPct);
+
+  // My portfolio: total investment split evenly as margin across all contracts, at the given leverage
+  const myTotalInvestment = parseFloat(els.myFutInvestment.value) || 0;
+  const myPerEntity = myTotalInvestment / states.length;
+  let myTotalValue = 0;
+  rows.forEach(r => {
+    const myGainFrac = isNaN(r.gainLevPct) ? 0 : r.gainLevPct / 100;
+    myTotalValue += myPerEntity * (1 + myGainFrac);
+  });
+  const myGainPct = myTotalInvestment > 0 ? ((myTotalValue - myTotalInvestment)/myTotalInvestment)*100 : NaN;
+
+  document.getElementById('myFutInvested').textContent = fmtUSD(myTotalInvestment);
+  document.getElementById('myFutPerEntity').textContent = `${fmtUSD(myPerEntity)} margin per contract`;
+  document.getElementById('myFutValue').textContent = fmtUSD(myTotalValue);
+  document.getElementById('myFutGain').textContent = isNaN(myGainPct) ? 'undefined' : fmtPct(myGainPct);
+}
+
+['capTotal','entry','sharesOutstanding','fedPct','statePct','myStockInvestment'].forEach(id => els[id].addEventListener('input', recalcStock));
+['cpi','mult','futSeed','futLeverage','myFutInvestment','dailyLimit'].forEach(id => els[id].addEventListener('input', recalcFutures));
+recalcStock();
+recalcFutures();
+</script>
+</body>
+</html>

@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SGA News Fetcher Test</title>
+  <style>
+    body {
+      font-family: monospace;
+      background: #1a1a2e;
+      color: #eee;
+      padding: 20px;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    .header {
+      background: #16213e;
+      padding: 20px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      border: 1px solid #0f3460;
+    }
+    .summary {
+      background: #1a1a2e;
+      padding: 15px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      border: 1px solid #0f3460;
+    }
+    .state-result {
+      padding: 10px;
+      margin: 5px 0;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .success {
+      background: rgba(16, 185, 129, 0.2);
+      border: 1px solid #10b981;
+    }
+    .failed {
+      background: rgba(239, 68, 68, 0.2);
+      border: 1px solid #ef4444;
+    }
+    .loading {
+      background: rgba(251, 191, 36, 0.2);
+      border: 1px solid #fbbf24;
+    }
+    .state-id {
+      font-weight: bold;
+      min-width: 30px;
+    }
+    .state-name {
+      flex: 1;
+    }
+    .article-count {
+      background: #0f3460;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+    button {
+      background: #e94560;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      margin: 10px 0;
+    }
+    button:hover {
+      background: #ff6b6b;
+    }
+    button:disabled {
+      background: #666;
+      cursor: not-allowed;
+    }
+    .progress {
+      height: 4px;
+      background: #0f3460;
+      border-radius: 2px;
+      margin: 10px 0;
+      overflow: hidden;
+    }
+    .progress-bar {
+      height: 100%;
+      background: #e94560;
+      transition: width 0.3s;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>SGA News Fetcher Test</h1>
+    <p>Testing news fetching from all 50 state economic development websites</p>
+    <button id="testBtn" onclick="runTest()">Start Test</button>
+    <div class="progress">
+      <div class="progress-bar" id="progressBar" style="width: 0%"></div>
+    </div>
+  </div>
+
+  <div class="summary" id="summary" style="display: none;">
+    <h2>Test Results Summary</h2>
+    <div id="summaryContent"></div>
+  </div>
+
+  <div id="results"></div>
+
+  <script type="module">
+    import { newsFetcher } from './src/newsFetcher.js';
+    import { STATE_NEWS_SOURCES } from './src/newsSources.js';
+
+    window.runTest = async function() {
+      const testBtn = document.getElementById('testBtn');
+      const resultsDiv = document.getElementById('results');
+      const summaryDiv = document.getElementById('summary');
+      const summaryContent = document.getElementById('summaryContent');
+      const progressBar = document.getElementById('progressBar');
+      
+      testBtn.disabled = true;
+      testBtn.textContent = 'Testing...';
+      resultsDiv.innerHTML = '';
+      summaryDiv.style.display = 'none';
+      
+      const results = {
+        success: [],
+        failed: [],
+        totalArticles: 0,
+        statesWithArticles: 0
+      };
+
+      const stateIds = ['MI']; // Only test Michigan for now
+      // const stateIds = Object.keys(STATE_NEWS_SOURCES);
+      let completed = 0;
+
+      for (let i = 0; i < stateIds.length; i++) {
+        const stateId = stateIds[i];
+        const source = STATE_NEWS_SOURCES[stateId];
+        
+        // Create result element
+        const resultEl = document.createElement('div');
+        resultEl.className = 'state-result loading';
+        resultEl.innerHTML = `
+          <span class="state-id">${stateId}</span>
+          <span class="state-name">${source.name}</span>
+          <span class="status">Testing...</span>
+        `;
+        resultsDiv.appendChild(resultEl);
+        
+        // Update progress
+        completed++;
+        progressBar.style.width = `${(completed / stateIds.length) * 100}%`;
+
+        const startTime = performance.now();
+        try {
+          const articles = await newsFetcher.fetchStateNews(stateId);
+          const endTime = performance.now();
+          const duration = ((endTime - startTime) / 1000).toFixed(2);
+          
+          if (articles.length > 0) {
+            results.success.push({
+              stateId,
+              name: source.name,
+              articleCount: articles.length,
+              sampleTitle: articles[0].title
+            });
+            results.totalArticles += articles.length;
+            results.statesWithArticles++;
+            
+            resultEl.className = 'state-result success';
+            let articlesHtml = articles.map(article => `
+              <div style="margin: 10px 0; padding: 10px; background: #0f3460; border-radius: 4px;">
+                <div style="font-weight: bold; margin-bottom: 5px;">${article.title}</div>
+                <div style="font-size: 12px; color: #888;">${article.description || 'No description'}</div>
+                <div style="font-size: 12px; margin-top: 5px;">
+                  <a href="${article.link}" target="_blank" style="color: #e94560;">${article.link}</a>
+                </div>
+                <div style="font-size: 11px; margin-top: 5px; color: #888;">
+                  Sentiment: ${article.sentiment} | Impact: ${article.impactScore}
+                </div>
+              </div>
+            `).join('');
+            
+            resultEl.innerHTML = `
+              <div style="width: 100%;">
+                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+                  <span class="state-id">${stateId}</span>
+                  <span class="state-name">${source.name}</span>
+                  <span class="article-count">${articles.length} articles</span>
+                  <span style="color: #10b981;">✓</span>
+                  <span style="font-size: 11px; color: #888;">(${duration}s)</span>
+                </div>
+                ${articlesHtml}
+              </div>
+            `;
+          } else {
+            results.failed.push({
+              stateId,
+              name: source.name,
+              reason: 'No articles found'
+            });
+            
+            resultEl.className = 'state-result failed';
+            resultEl.innerHTML = `
+              <span class="state-id">${stateId}</span>
+              <span class="state-name">${source.name}</span>
+              <span style="color: #ef4444;">✗ No articles</span>
+              <span style="font-size: 11px; color: #888;">(${duration}s)</span>
+            `;
+          }
+        } catch (error) {
+          const endTime = performance.now();
+          const duration = ((endTime - startTime) / 1000).toFixed(2);
+          results.failed.push({
+            stateId,
+            name: source.name,
+            reason: error.message
+          });
+          
+          resultEl.className = 'state-result failed';
+          resultEl.innerHTML = `
+            <span class="state-id">${stateId}</span>
+            <span class="state-name">${source.name}</span>
+            <span style="color: #ef4444;">✗ ${error.message.substring(0, 30)}...</span>
+            <span style="font-size: 11px; color: #888;">(${duration}s)</span>
+          `;
+        }
+        
+        // No delay between requests for maximum speed
+      }
+
+      // Show summary
+      const successRate = (results.statesWithArticles / stateIds.length) * 100;
+      const avgArticles = results.totalArticles / Math.max(results.statesWithArticles, 1);
+      
+      summaryContent.innerHTML = `
+        <p><strong>Total States Tested:</strong> ${stateIds.length}</p>
+        <p><strong>States with Articles:</strong> ${results.statesWithArticles} (${successRate.toFixed(1)}%)</p>
+        <p><strong>Total Articles Retrieved:</strong> ${results.totalArticles}</p>
+        <p><strong>Average Articles per State:</strong> ${avgArticles.toFixed(1)}</p>
+        <p><strong>Success Rate:</strong> ${successRate >= 80 ? '✓ Excellent' : successRate >= 50 ? '⚠ Moderate' : '✗ Poor'}</p>
+      `;
+      
+      summaryDiv.style.display = 'block';
+      testBtn.disabled = false;
+      testBtn.textContent = 'Run Test Again';
+    };
+  </script>
+</body>
+</html>

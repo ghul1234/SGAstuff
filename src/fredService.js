@@ -1,5 +1,5 @@
 /**
- * Sovereign Growth Assets (SGA) - FRED Economic Data Service
+ * SGA Network - FRED Economic Data Service
  * Integrates your EOI formula with live macroeconomic statistics from the St. Louis Fed.
  */
 
@@ -161,7 +161,7 @@ export class FREDService {
       : `Latest macroeconomic indicators reported via official federal channels show adjustments in ${state.name}. Driven by ${primaryDriver}, the Sovereign Growth EOI settles at ${newEOI} (representing a change of ${delta} points).`;
  
     return {
-      id: Date.now(),
+      id: Date.now(), // Using timestamp as ID - will be handled flexibly in article renderer
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
       stateId: state.id,
       title,

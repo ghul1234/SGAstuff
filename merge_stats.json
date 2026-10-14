@@ -1,0 +1,70 @@
+{
+  "total_regions": 2796,
+  "real_gdp": 308,
+  "estimated_gdp": 2488,
+  "countries": 179,
+  "countries_with_real_data": 57,
+  "global_median_gdp": 5967,
+  "top_10_regions": [
+    {
+      "name": "Liege",
+      "gdp": 177908,
+      "country": "Belgium",
+      "source": "estimated"
+    },
+    {
+      "name": "West-Vlaanderen",
+      "gdp": 160648,
+      "country": "Belgium",
+      "source": "estimated"
+    },
+    {
+      "name": "Luxembourg",
+      "gdp": 147162,
+      "country": "Belgium",
+      "source": "estimated"
+    },
+    {
+      "name": "Limburg",
+      "gdp": 139121,
+      "country": "Belgium",
+      "source": "estimated"
+    },
+    {
+      "name": "Mazowieckie",
+      "gdp": 136130,
+      "country": "Poland",
+      "source": "DOSE"
+    },
+    {
+      "name": "Namur",
+      "gdp": 131964,
+      "country": "Belgium",
+      "source": "estimated"
+    },
+    {
+      "name": "Oost-Vlaanderen",
+      "gdp": 124531,
+      "country": "Belgium",
+      "source": "estimated"
+    },
+    {
+      "name": "National Capital Region",
+      "gdp": 121533,
+      "country": "Philippines",
+      "source": "DOSE"
+    },
+    {
+      "name": "Buenos Aires",
+      "gdp": 120857,
+      "country": "Argentina",
+      "source": "DOSE"
+    },
+    {
+      "name": "Mexico",
+      "gdp": 105376,
+      "country": "Mexico",
+      "source": "DOSE"
+    }
+  ]
+}

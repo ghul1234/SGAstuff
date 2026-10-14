@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Press Release Fetch</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #1a1a2e;
+            color: #fff;
+        }
+        .test-section {
+            background: rgba(255,255,255,0.05);
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+        }
+        button {
+            background: #4CAF50;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 10px 5px;
+        }
+        button:hover {
+            background: #45a049;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            background: rgba(0,0,0,0.3);
+            border-radius: 4px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .success {
+            border-left: 4px solid #4CAF50;
+        }
+        .error {
+            border-left: 4px solid #f44336;
+        }
+        input {
+            width: 100%;
+            padding: 10px;
+            margin: 10px 0;
+            background: rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,255,255,0.2);
+            color: white;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Press Release Fetch Test</h1>
+    
+    <div class="test-section">
+        <h2>Test URL</h2>
+        <input type="text" id="urlInput" value="https://business.utah.gov/usbci/usbci-technical-assistance-partner-sbc-consulting-expands-post-program-financial-support-for-utah-small-businesses/" placeholder="Enter URL to test">
+        <button onclick="testFetch()">Test Fetch</button>
+        <button onclick="testUtah()">Test Utah Article</button>
+        <button onclick="testGeorgia()">Test Georgia Source</button>
+        <button onclick="clearResults()">Clear Results</button>
+    </div>
+
+    <div class="test-section">
+        <h2>Results</h2>
+        <div id="results"></div>
+    </div>
+
+    <script>
+        async function fetchFullPressRelease(url) {
+            try {
+                if (!url) return null;
+
+                // CORS proxies to bypass browser restrictions
+                const CORS_PROXIES = [
+                    'http://localhost:3001/proxy?url=',
+                    'https://api.allorigins.win/raw?url=',
+                    'https://corsproxy.io/?',
+                    'https://api.codetabs.com/v1/proxy?quest='
+                ];
+
+                let htmlText = null;
+                let fetchError = null;
+
+                // First, try direct fetch for areadevelopment.com (has local proxy)
+                if (url.includes('areadevelopment.com')) {
+                    try {
+                        let proxiedUrl = url;
+                        if (url.startsWith('https://www.areadevelopment.com')) {
+                            proxiedUrl = url.replace('https://www.areadevelopment.com', '/api/areadevelopment');
+                        } else if (url.startsWith('http://www.areadevelopment.com')) {
+                            proxiedUrl = url.replace('http://www.areadevelopment.com', '/api/areadevelopment');
+                        } else if (url.startsWith('/')) {
+                            proxiedUrl = `/api/areadevelopment${url}`;
+                        }
+
+                        const response = await fetch(proxiedUrl);
+                        if (response.ok) {
+                            htmlText = await response.text();
+                        }
+                    } catch (error) {
+                        console.warn('Direct areadevelopment fetch failed:', error.message);
+                        fetchError = error;
+                    }
+                }
+
+                // If direct fetch failed or not areadevelopment.com, try CORS proxies
+                if (!htmlText) {
+                    for (const proxy of CORS_PROXIES) {
+                        try {
+                            const response = await fetch(proxy + encodeURIComponent(url), {
+                                headers: {
+                                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                                }
+                            });
+                            
+                            if (response.ok) {
+                                htmlText = await response.text();
+                                console.log(`Successfully fetched via proxy: ${proxy}`);
+                                break;
+                            }
+                        } catch (error) {
+                            console.warn(`Proxy ${proxy} failed:`, error.message);
+                            fetchError = error;
+                            continue;
+                        }
+                    }
+                }
+
+                if (!htmlText) {
+                    console.error('All fetch attempts failed for:', url);
+                    return null;
+                }
+
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(htmlText, 'text/html');
+
+                // Try multiple content selectors for different website structures
+                const contentEl = doc.querySelector('section.areaArticleBody') ||
+                    doc.querySelector('[itemprop="articleBody"]') ||
+                    doc.querySelector('.story-content') ||
+                    doc.querySelector('.article-body') ||
+                    doc.querySelector('.entry-content') ||
+                    doc.querySelector('.post-content') ||
+                    doc.querySelector('.field--name-body') ||
+                    doc.querySelector('.field--name-field-body') ||
+                    doc.querySelector('.news-content') ||
+                    doc.querySelector('.press-release-content') ||
+                    doc.querySelector('.content-body') ||
+                    doc.querySelector('.post-body') ||
+                    doc.querySelector('.node-content') ||
+                    doc.querySelector('.article-content') ||
+                    doc.querySelector('.main-content') ||
+                    doc.querySelector('article') ||
+                    doc.querySelector('.content') ||
+                    doc.querySelector('main') ||
+                    doc.querySelector('.post') ||
+                    doc.querySelector('.entry');
+
+                if (contentEl) {
+                    // Remove elements that are sidebars, advertisements, or related articles to keep layout clean
+                    const toRemove = contentEl.querySelectorAll('script, style, iframe, aside, .sidebar, .ads, .advertisement, .related-items, .navigation, .comments, .share-buttons, .social-share, .author-box, .tags, .categories');
+                    toRemove.forEach(el => el.remove());
+
+                    // Return the clean HTML content of the article body
+                    const content = contentEl.innerHTML.trim();
+                    return content.length > 100 ? content : null; // Only return if we got substantial content
+                }
+
+                console.error('No content element found for:', url);
+                return null;
+            } catch (error) {
+                console.error('Error fetching full press release:', error);
+                return null;
+            }
+        }
+
+        function addResult(url, success, content, error) {
+            const resultsDiv = document.getElementById('results');
+            const resultDiv = document.createElement('div');
+            resultDiv.className = `result ${success ? 'success' : 'error'}`;
+            
+            const timestamp = new Date().toLocaleTimeString();
+            
+            if (success) {
+                resultDiv.innerHTML = `
+                    <h3>✅ SUCCESS - ${timestamp}</h3>
+                    <p><strong>URL:</strong> ${url}</p>
+                    <p><strong>Content Length:</strong> ${content.length} characters</p>
+                    <p><strong>First 500 characters:</strong></p>
+                    <pre style="white-space: pre-wrap; word-wrap: break-word; font-size: 12px; background: rgba(0,0,0,0.3); padding: 10px; border-radius: 4px;">${content.substring(0, 500)}</pre>
+                `;
+            } else {
+                resultDiv.innerHTML = `
+                    <h3>❌ FAILED - ${timestamp}</h3>
+                    <p><strong>URL:</strong> ${url}</p>
+                    <p><strong>Error:</strong> ${error || 'Unknown error'}</p>
+                `;
+            }
+            
+            resultsDiv.insertBefore(resultDiv, resultsDiv.firstChild);
+        }
+
+        async function testFetch() {
+            const url = document.getElementById('urlInput').value;
+            if (!url) {
+                alert('Please enter a URL');
+                return;
+            }
+
+            addResult(url, false, null, 'Testing...');
+            
+            try {
+                const content = await fetchFullPressRelease(url);
+                if (content) {
+                    // Remove the loading result
+                    const resultsDiv = document.getElementById('results');
+                    resultsDiv.removeChild(resultsDiv.firstChild);
+                    addResult(url, true, content);
+                } else {
+                    const resultsDiv = document.getElementById('results');
+                    resultsDiv.removeChild(resultsDiv.firstChild);
+                    addResult(url, false, null, 'Could not extract content - no matching selectors found');
+                }
+            } catch (error) {
+                const resultsDiv = document.getElementById('results');
+                resultsDiv.removeChild(resultsDiv.firstChild);
+                addResult(url, false, null, error.message);
+            }
+        }
+
+        function testUtah() {
+            document.getElementById('urlInput').value = 'https://business.utah.gov/usbci/usbci-technical-assistance-partner-sbc-consulting-expands-post-program-financial-support-for-utah-small-businesses/';
+            testFetch();
+        }
+
+        function testGeorgia() {
+            document.getElementById('urlInput').value = 'https://gov.georgia.gov/press-releases';
+            testFetch();
+        }
+
+        function clearResults() {
+            document.getElementById('results').innerHTML = '';
+        }
+    </script>
+</body>
+</html>

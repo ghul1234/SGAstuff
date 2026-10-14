@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>SGA Calculator Test</title>
+<style>
+  body { font-family: Arial, sans-serif; padding: 20px; background: #f5f5f5; }
+  .test-section { background: white; padding: 20px; margin: 10px 0; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+  .pass { color: green; font-weight: bold; }
+  .fail { color: red; font-weight: bold; }
+  .result { margin: 5px 0; padding: 10px; background: #f9f9f9; border-left: 4px solid #ccc; }
+  .result.pass { border-left-color: green; }
+  .result.fail { border-left-color: red; }
+  h2 { color: #333; border-bottom: 2px solid #ddd; padding-bottom: 10px; }
+  .formula { background: #e8f4ff; padding: 10px; border-radius: 4px; font-family: monospace; margin: 10px 0; }
+</style>
+</head>
+<body>
+<h1>SGA Calculator Mathematical Accuracy Test</h1>
+<p>This test verifies the mathematical accuracy of the SGA stock and futures calculations.</p>
+
+<div class="test-section">
+  <h2>Test 1: Stock Calculations</h2>
+  <div class="formula">Default values: Capital=$400M, Entry=$0.01, Shares=40B, GDP Multiplier=1.0</div>
+  <div id="stockTestResults"></div>
+</div>
+
+<div class="test-section">
+  <h2>Test 2: Stock Calculations with GDP Multiplier</h2>
+  <div class="formula">GDP Multiplier=2.0 (should double all market caps and price targets)</div>
+  <div id="stockMultiplierTestResults"></div>
+</div>
+
+<div class="test-section">
+  <h2>Test 3: Stock Calculations with Different Shares Unit</h2>
+  <div class="formula">Shares=40000M (should equal 40B)</div>
+  <div id="stockSharesUnitTestResults"></div>
+</div>
+
+<div class="test-section">
+  <h2>Test 4: Futures Calculations</h2>
+  <div class="formula">Default values: CPI=2.8%, Multiplier=$2000, Seed=$54396.39, Leverage=20x, GDP Multiplier=1.0</div>
+  <div id="futuresTestResults"></div>
+</div>
+
+<div class="test-section">
+  <h2>Test 5: Futures Calculations with GDP Multiplier</h2>
+  <div class="formula">GDP Multiplier=2.0 (should double EOI and price targets)</div>
+  <div id="futuresMultiplierTestResults"></div>
+</div>
+
+<div class="test-section">
+  <h2>Test 6: Portfolio Investment Calculations</h2>
+  <div class="formula">$10,000 investment split across 4215 entities</div>
+  <div id="portfolioTestResults"></div>
+</div>
+
+<script src="src/states_data.js"></script>
+<script>
+// Simulate the SGA calculator functions
+function fmtUSD(n){
+  if (Math.abs(n) >= 1e12) return '$' + (n/1e12).toFixed(3) + 'T';
+  if (Math.abs(n) >= 1e9) return '$' + (n/1e9).toFixed(2) + 'B';
+  if (Math.abs(n) >= 1e6) return '$' + (n/1e6).toFixed(2) + 'M';
+  return '$' + n.toLocaleString(undefined,{maximumFractionDigits:2});
+}
+
+function fmtPct(n){ return (n>=0?'+':'') + n.toLocaleString(undefined,{maximumFractionDigits:0}) + '%'; }
+
+const states = statesData;
+const avgGdp = states.reduce((s,[,g]) => s + g*1e6, 0) / states.length;
+
+function testStockCalculations(capTotal, entry, sharesOutstanding, sharesUnit, gdpMultiplier, fedPct, statePct) {
+  const capTotalNum = capTotal * 1e6;
+  const sharesOutstandingNum = sharesOutstanding * (sharesUnit === 'B' ? 1e9 : 1e6);
+  const sharesPurchased = capTotalNum / entry;
+  const ownershipFrac = sharesOutstandingNum > 0 ? sharesPurchased / sharesOutstandingNum : 0;
+  
+  const fedPctNum = fedPct / 100;
+  const statePctNum = statePct / 100;
+  const publicPct = Math.max(0, 1 - fedPctNum - statePctNum);
+
+  let totStockCap = 0, totStockValue = 0, totFedEquity = 0, totStateEquity = 0;
+
+  const rows = states.map(([name, gdpM, country]) => {
+    const gdp = gdpM * 1e6 * gdpMultiplier;
+    const marketCap = gdp;
+    const priceTarget = sharesOutstandingNum > 0 ? marketCap / sharesOutstandingNum : 0;
+    const valueAtTarget = sharesPurchased * priceTarget;
+    const stockGainPct = (valueAtTarget/capTotalNum - 1) * 100;
+    const fedEquity = marketCap * fedPctNum;
+    const stateEquity = marketCap * statePctNum;
+
+    totStockCap += marketCap;
+    totStockValue += valueAtTarget;
+    totFedEquity += fedEquity;
+    totStateEquity += stateEquity;
+
+    return {name, country, gdp, marketCap, priceTarget, stockGainPct, fedEquity, stateEquity};
+  });
+
+  const totCapAll = capTotalNum * states.length;
+  const totalStockGain = (totStockValue - totCapAll)/totCapAll*100;
+  const publicFloatVal = totStockCap * publicPct;
+
+  return {
+    capTotalNum,
+    sharesOutstandingNum,
+    sharesPurchased,
+    ownershipFrac,
+    totStockCap,
+    totStockValue,
+    totalStockGain,
+    totFedEquity,
+    totStateEquity,
+    publicPct,
+    publicFloatVal,
+    sampleState: rows[0] // California for testing
+  };
+}
+
+function testFuturesCalculations(cpi, mult, seed, leverage, dailyLimit, gdpMultiplier) {
+  const dailyLimitInput = dailyLimit / 100;
+  const wGdp = 0.30, wOther = 0.70;
+  const haircut = 0.05 * Math.max(0, cpi - 2.0);
+  const inflationFactor = 1 - haircut;
+
+  let totFutNotional = 0, totSeedDollars = 0;
+  let minEoi = Infinity, maxEoi = -Infinity;
+
+  const rows = states.map(([name, gdpM, country]) => {
+    const gdp = gdpM * 1e6 * gdpMultiplier;
+    const gdpIdx = (gdp/avgGdp)*100;
+    const rawEoi = wGdp*gdpIdx + wOther*100;
+    const eoi = rawEoi * inflationFactor;
+    const priceTarget = eoi * mult;
+    const gainPct = seed > 0 ? ((priceTarget - seed)/seed)*100 : NaN;
+    const gainLevPct = gainPct * leverage;
+
+    let liquidityTierFactor;
+    if (gdp >= 1e12) liquidityTierFactor = 0.6;
+    else if (gdp >= 200e9) liquidityTierFactor = 0.8;
+    else if (gdp >= 50e9) liquidityTierFactor = 1.0;
+    else liquidityTierFactor = 1.3;
+
+    const effectiveDailyLimit = dailyLimitInput * liquidityTierFactor;
+    const daysToTarget = (seed > 0 && priceTarget > seed && effectiveDailyLimit > 0)
+      ? Math.log(priceTarget/seed) / Math.log(1+effectiveDailyLimit)
+      : NaN;
+
+    totFutNotional += priceTarget;
+    totSeedDollars += seed;
+    minEoi = Math.min(minEoi, eoi);
+    maxEoi = Math.max(maxEoi, eoi);
+
+    return {name, country, gdp, eoi, priceTarget, gainPct, gainLevPct, daysToTarget};
+  });
+
+  const totalGainPct = totSeedDollars > 0 ? ((totFutNotional - totSeedDollars*states.length)/(totSeedDollars*states.length))*100 : NaN;
+  const totalGainLevPct = totalGainPct * leverage;
+
+  return {
+    inflationFactor,
+    totFutNotional,
+    totalGainPct,
+    totalGainLevPct,
+    minEoi,
+    maxEoi,
+    sampleState: rows[0] // California for testing
+  };
+}
+
+function runTest(testName, testFunction, expectedResults) {
+  const results = testFunction();
+  let passed = true;
+  let output = '';
+
+  for (const [key, expected] of Object.entries(expectedResults)) {
+    const actual = results[key];
+    let match = false;
+    
+    if (typeof expected === 'number') {
+      match = Math.abs(actual - expected) < (Math.abs(expected) * 0.01); // 1% tolerance
+    } else {
+      match = actual === expected;
+    }
+
+    if (!match) {
+      passed = false;
+    }
+
+    output += `<div class="result ${match ? 'pass' : 'fail'}">
+      <strong>${key}:</strong> Expected ${typeof expected === 'number' ? expected.toFixed(2) : expected}, 
+      Got ${typeof actual === 'number' ? actual.toFixed(2) : actual}
+      ${match ? '✓' : '✗'}
+    </div>`;
+  }
+
+  return `<h3 class="${passed ? 'pass' : 'fail'}">${testName}: ${passed ? 'PASSED' : 'FAILED'}</h3>${output}`;
+}
+
+// Run tests
+document.getElementById('stockTestResults').innerHTML = runTest(
+  'Default Stock Calculations',
+  () => testStockCalculations(400, 0.01, 40, 'B', 1.0, 20, 20),
+  {
+    capTotalNum: 400000000,
+    sharesOutstandingNum: 40000000000,
+    sharesPurchased: 40000000000,
+    ownershipFrac: 1.0,
+    publicPct: 0.6
+  }
+);
+
+document.getElementById('stockMultiplierTestResults').innerHTML = runTest(
+  'Stock Calculations with GDP Multiplier 2.0',
+  () => testStockCalculations(400, 0.01, 40, 'B', 2.0, 20, 20),
+  {
+    capTotalNum: 400000000,
+    sharesOutstandingNum: 40000000000,
+    totStockCap: 8206248000000 * 2, // Should be doubled
+    sampleState: { marketCap: 4103124000000 * 2 } // California market cap should be doubled
+  }
+);
+
+document.getElementById('stockSharesUnitTestResults').innerHTML = runTest(
+  'Stock Calculations with Shares in Millions',
+  () => testStockCalculations(400, 0.01, 40000, 'M', 1.0, 20, 20),
+  {
+    capTotalNum: 400000000,
+    sharesOutstandingNum: 40000000000, // Should equal 40B
+    sharesPurchased: 40000000000,
+    ownershipFrac: 1.0
+  }
+);
+
+document.getElementById('futuresTestResults').innerHTML = runTest(
+  'Default Futures Calculations',
+  () => testFuturesCalculations(2.8, 2000, 54396.39, 20, 10, 1.0),
+  {
+    inflationFactor: 0.96, // 1 - 0.05 * (2.8 - 2.0) = 1 - 0.04 = 0.96
+    sampleState: { 
+      eoi: 156.4, // Approximate for California
+      priceTarget: 312800 // eoi * 2000
+    }
+  }
+);
+
+document.getElementById('futuresMultiplierTestResults').innerHTML = runTest(
+  'Futures Calculations with GDP Multiplier 2.0',
+  () => testFuturesCalculations(2.8, 2000, 54396.39, 20, 10, 2.0),
+  {
+    inflationFactor: 0.96,
+    sampleState: {
+      eoi: 156.4 * 2, // Should be doubled (approximately)
+      priceTarget: 312800 * 2 // Should be doubled
+    }
+  }
+);
+
+document.getElementById('portfolioTestResults').innerHTML = runTest(
+  'Portfolio Investment Calculations',
+  () => {
+    const myTotalInvestment = 10000;
+    const myPerEntity = myTotalInvestment / states.length;
+    return {
+      myTotalInvestment,
+      myPerEntity,
+      perEntityAmount: myPerEntity.toFixed(2)
+    };
+  },
+  {
+    myTotalInvestment: 10000,
+    myPerEntity: 2.37, // 10000 / 4215 ≈ 2.37
+    perEntityAmount: '2.37'
+  }
+);
+</script>
+</body>
+</html>
